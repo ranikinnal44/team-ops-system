@@ -1,0 +1,147 @@
+/**
+ * Exception rules — the heart of the accountability model.
+ *
+ * These are pure functions over a minimal shape (not the full Task row) so the
+ * same rules can later be driven by an automation engine, a scheduled job or a
+ * notification dispatcher without touching the task code.
+ *
+ * Notifications are intentionally NOT fired here; Layer 1 only computes flags.
+ */
+import { ExceptionFlag, TaskStatus } from './enums.ts';
+import {
+  todayDate,
+  dateOfTimestamp,
+  daysBetween,
+  workingDaysBetween,
+  type IsoDate,
+  type IsoTimestamp,
+} from '../lib/dates.ts';
+
+/**
+ * The minimum a record must expose to be evaluated by the rules.
+ *
+ * `dueDate` is nullable on purpose: a task with no agreed deadline cannot be
+ * late. Treating "no deadline" as a deadline would manufacture false overdue
+ * signals, so the deadline rules simply do not apply until one is set — the
+ * missing deadline is surfaced through the clarification queue instead.
+ */
+export type EvaluableTask = {
+  readonly status: TaskStatus;
+  readonly dueDate: IsoDate | null;
+  readonly lastUpdatedAt: IsoTimestamp;
+};
+
+export type RuleThresholds = {
+  readonly dueSoonDays: number;
+  readonly noUpdateWorkingDays: number;
+};
+
+export const DEFAULT_THRESHOLDS: RuleThresholds = { dueSoonDays: 2, noUpdateWorkingDays: 2 };
+
+/** Completed work is never an exception, whatever its dates say. */
+export const isOpen = (task: EvaluableTask): boolean => task.status !== TaskStatus.Completed;
+
+/** A deadline rule can only fire once a deadline exists. */
+export const hasDeadline = (task: EvaluableTask): task is EvaluableTask & { dueDate: IsoDate } =>
+  task.dueDate !== null;
+
+/** Due Date < Today AND Status != Completed */
+export function isOverdue(task: EvaluableTask, today: IsoDate = todayDate()): boolean {
+  return isOpen(task) && hasDeadline(task) && daysBetween(today, task.dueDate) < 0;
+}
+
+/**
+ * Due Date <= Today + N days AND Status != Completed.
+ * Overdue tasks also satisfy this; `evaluateTask` reports the more severe flag
+ * only, so a task is never listed as both OVERDUE and DUE SOON.
+ */
+export function isDueSoon(
+  task: EvaluableTask,
+  today: IsoDate = todayDate(),
+  thresholds: RuleThresholds = DEFAULT_THRESHOLDS,
+): boolean {
+  return (
+    isOpen(task) && hasDeadline(task) && daysBetween(today, task.dueDate) <= thresholds.dueSoonDays
+  );
+}
+
+/** Today - Last Updated At > N working days AND Status != Completed */
+export function hasNoRecentUpdate(
+  task: EvaluableTask,
+  today: IsoDate = todayDate(),
+  thresholds: RuleThresholds = DEFAULT_THRESHOLDS,
+): boolean {
+  if (!isOpen(task)) return false;
+  const elapsed = workingDaysBetween(dateOfTimestamp(task.lastUpdatedAt), today);
+  return elapsed > thresholds.noUpdateWorkingDays;
+}
+
+/** Status == Blocked */
+export const isBlocked = (task: EvaluableTask): boolean => task.status === TaskStatus.Blocked;
+
+export const isDueToday = (task: EvaluableTask, today: IsoDate = todayDate()): boolean =>
+  isOpen(task) && task.dueDate === today;
+
+/** No agreed deadline AND still open — the manager needs to set one. */
+export const needsDeadline = (task: EvaluableTask): boolean => isOpen(task) && !hasDeadline(task);
+
+export const isDueWithin = (
+  task: EvaluableTask,
+  days: number,
+  today: IsoDate = todayDate(),
+): boolean => {
+  if (!isOpen(task) || !hasDeadline(task)) return false;
+  const delta = daysBetween(today, task.dueDate);
+  return delta >= 0 && delta <= days;
+};
+
+/**
+ * All flags that apply to a task. OVERDUE suppresses DUE_SOON so each task
+ * appears in exactly one deadline bucket on the dashboards.
+ */
+export function evaluateTask(
+  task: EvaluableTask,
+  today: IsoDate = todayDate(),
+  thresholds: RuleThresholds = DEFAULT_THRESHOLDS,
+): ExceptionFlag[] {
+  const flags: ExceptionFlag[] = [];
+  const overdue = isOverdue(task, today);
+  if (overdue) flags.push(ExceptionFlag.Overdue);
+  else if (isDueSoon(task, today, thresholds)) flags.push(ExceptionFlag.DueSoon);
+  if (isBlocked(task)) flags.push(ExceptionFlag.Blocked);
+  if (hasNoRecentUpdate(task, today, thresholds)) flags.push(ExceptionFlag.NoRecentUpdate);
+  return flags;
+}
+
+export const hasFlag = (flags: readonly ExceptionFlag[], flag: ExceptionFlag): boolean =>
+  flags.includes(flag);
+
+/**
+ * Attention score — higher means it needs looking at sooner. Used to order the
+ * employee's default view and the manager's exception lists so the most
+ * important item is always first.
+ */
+/**
+ * Attention score -- higher means it needs looking at sooner. Used to order the
+ * employee's default view and the manager's exception lists so the most
+ * important item is always first.
+ *
+ * An unassigned priority contributes nothing rather than being scored as if it
+ * were normal; the task still surfaces through the clarification queue.
+ */
+export function attentionScore(
+  task: EvaluableTask & { priority: 'P0' | 'P1' | 'P2' | 'P3' | null },
+  today: IsoDate = todayDate(),
+  thresholds: RuleThresholds = DEFAULT_THRESHOLDS,
+): number {
+  if (!isOpen(task)) return 0;
+  const flags = evaluateTask(task, today, thresholds);
+  let score = task.priority === null ? 0 : { P0: 40, P1: 30, P2: 20, P3: 10 }[task.priority];
+  if (flags.includes(ExceptionFlag.Overdue) && hasDeadline(task)) {
+    score += 100 + Math.min(-daysBetween(today, task.dueDate), 30);
+  }
+  if (flags.includes(ExceptionFlag.Blocked)) score += 60;
+  if (flags.includes(ExceptionFlag.DueSoon)) score += 35;
+  if (flags.includes(ExceptionFlag.NoRecentUpdate)) score += 25;
+  return score;
+}

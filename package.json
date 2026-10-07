@@ -1,0 +1,27 @@
+{
+  "name": "team-ops-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal Team Task Management and Accountability System \u2014 Layer 1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "setup": "node --env-file-if-exists=.env src/db/migrate.ts && node --env-file-if-exists=.env src/db/seed.ts --dataset=AUTO_DOCK",
+    "migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
+    "seed": "node --env-file-if-exists=.env src/db/seed.ts",
+    "seed:reset": "node --env-file-if-exists=.env src/db/seed.ts --dataset=AUTO_DOCK --reset",
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "dev": "node --watch --env-file-if-exists=.env src/server.ts",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "seed:demo": "node --env-file-if-exists=.env src/db/seed.ts --dataset=DEMO --reset",
+    "import:report": "node --env-file-if-exists=.env src/db/report.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^5.6.0"
+  }
+}
