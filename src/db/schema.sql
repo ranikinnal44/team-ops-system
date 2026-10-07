@@ -116,10 +116,26 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- Qualitative progress straight from the source, e.g. "70-80% Done".
   progress_note     TEXT,
 
-  -- Required. Work with no agreed start and end cannot be chased, so it is
-  -- refused at the door rather than recorded as an open-ended intention.
-  start_date        TEXT    NOT NULL,
-  due_date          TEXT    NOT NULL,
+  -- The manager's budget, in WORKING days. Dates are not the manager's to set:
+  -- they budget the effort, the owner proposes the days that spend it and the
+  -- reviewer agrees them.
+  effort_days          INTEGER CHECK (effort_days IS NULL OR effort_days >= 1),
+  -- The first estimate. Never changed, so slippage against it stays measurable
+  -- even after an extension raises `effort_days`.
+  original_effort_days INTEGER CHECK (original_effort_days IS NULL OR original_effort_days >= 1),
+
+  schedule_state          TEXT NOT NULL DEFAULT 'unset'
+    CHECK (schedule_state IN ('unset', 'proposed', 'locked')),
+  schedule_proposed_by_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  schedule_proposed_at    TEXT,
+  schedule_approved_by_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  schedule_approved_at    TEXT,
+  schedule_review_note    TEXT,
+
+  -- Nullable until the owner proposes them. A budgeted task with no dates is a
+  -- normal, visible state (SCHEDULE_NOT_SET), not a defect.
+  start_date        TEXT,
+  due_date          TEXT,
   original_due_date TEXT,
   -- The date the task carried in its source record (e.g. a daily task log).
   -- This is NOT a deadline and must never be treated as one.
@@ -144,7 +160,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   last_updated_at   TEXT    NOT NULL,
   completed_at      TEXT,
 
-  CHECK (due_date >= start_date)
+  CHECK (due_date IS NULL OR start_date IS NULL OR due_date >= start_date)
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_owner     ON tasks(owner_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_milestone ON tasks(milestone_id);
@@ -152,6 +168,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_workstream ON tasks(workstream_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_origin    ON tasks(origin);
 CREATE INDEX IF NOT EXISTS idx_tasks_status    ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due       ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_schedule  ON tasks(schedule_state);
 
 -- Per-day outcomes for a multi-day task.
 --

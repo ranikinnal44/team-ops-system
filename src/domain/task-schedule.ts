@@ -17,12 +17,21 @@
  * source said, and rejecting history at write time would lose it. These rules
  * apply to work added and rescheduled inside the system.
  */
-import { addDays, daysBetween, formatDateHuman, type IsoDate } from '../lib/dates.ts';
+import {
+  addDays,
+  daysBetween,
+  formatDateHuman,
+  workingDaysInclusive,
+  type IsoDate,
+} from '../lib/dates.ts';
 import { validationError, type ErrorDetail } from '../lib/errors.ts';
 import type { TaskDayPlan } from './types.ts';
 
-/** Matches `config.rules.maxTaskSpanDays`; passed in so this stays pure. */
-export const DEFAULT_MAX_TASK_SPAN_DAYS = 3;
+/** Matches `config.rules.maxTaskEffortDays`; passed in so this stays pure. */
+export const DEFAULT_MAX_TASK_EFFORT_DAYS = 5;
+
+/** Kept for the manager's direct-schedule path. */
+export const DEFAULT_MAX_TASK_SPAN_DAYS = DEFAULT_MAX_TASK_EFFORT_DAYS;
 
 export const MAX_DAY_OUTCOME_LENGTH = 500;
 
@@ -190,4 +199,100 @@ export function describeSchedule(start: IsoDate, due: IsoDate): string {
   return span === 1
     ? formatDateHuman(start)
     : `${formatDateHuman(start)} → ${formatDateHuman(due)} (${span} days)`;
+}
+
+
+// --- effort budgets and proposed schedules --------------------------------
+
+/**
+ * Validate a manager's effort budget.
+ *
+ * The budget is in WORKING days, which is what "three days of effort" means to
+ * the person doing it; a weekend in the middle does not spend any of it.
+ */
+export function normaliseEffortDays(
+  effortDays: number | null | undefined,
+  maxEffortDays: number = DEFAULT_MAX_TASK_EFFORT_DAYS,
+): number {
+  if (effortDays === null || effortDays === undefined) {
+    throw validationError('A task needs an effort budget', [
+      {
+        path: 'effortDays',
+        message: 'is required — say how many working days this should take',
+      },
+    ]);
+  }
+  if (!Number.isInteger(effortDays) || effortDays < 1) {
+    throw validationError('Effort is counted in whole working days', [
+      { path: 'effortDays', message: 'must be a whole number of days, at least 1' },
+    ]);
+  }
+  if (effortDays > maxEffortDays) {
+    throw validationError(
+      `A task can be budgeted at most ${maxEffortDays} working day` +
+        `${maxEffortDays === 1 ? '' : 's'}; this one asks for ${effortDays}. ` +
+        'Work that needs longer is a milestone, not a task — break it down.',
+      [{ path: 'effortDays', message: `must be ${maxEffortDays} or fewer` }],
+    );
+  }
+  return effortDays;
+}
+
+export type ProposedSchedule = {
+  readonly startDate: IsoDate;
+  readonly dueDate: IsoDate;
+  /** Working days the proposal actually spends. */
+  readonly effortUsed: number;
+  readonly dayPlans: readonly TaskDayPlan[];
+};
+
+/**
+ * Validate dates an owner proposes against the budget they were given.
+ *
+ * The window may not spend MORE working days than the budget — that is what a
+ * budget means. It may spend fewer: finishing three days of work in two is
+ * nobody's problem but the owner's, and the system has no business forbidding
+ * it. Needing more is what the deadline extension exists for.
+ */
+export function normaliseProposedSchedule(
+  input: ScheduleInput,
+  effortDays: number,
+  maxEffortDays: number = DEFAULT_MAX_TASK_EFFORT_DAYS,
+): ProposedSchedule {
+  const details: ErrorDetail[] = [];
+  const { startDate, dueDate } = input;
+  if (startDate === null || startDate === undefined) {
+    details.push({ path: 'startDate', message: 'is required — say when you will start' });
+  }
+  if (dueDate === null || dueDate === undefined) {
+    details.push({ path: 'dueDate', message: 'is required — say when you will finish' });
+  }
+  if (details.length > 0) {
+    throw validationError('Proposing a schedule needs both a start and an end date', details);
+  }
+
+  const start = startDate as IsoDate;
+  const due = dueDate as IsoDate;
+  if (daysBetween(start, due) < 0) {
+    throw validationError('The end date cannot be before the start date', [
+      { path: 'dueDate', message: 'must be on or after the start date' },
+    ]);
+  }
+
+  const effortUsed = workingDaysInclusive(start, due);
+  if (effortUsed === 0) {
+    throw validationError('That window contains no working days', [
+      { path: 'startDate', message: 'a task has to cover at least one working day' },
+    ]);
+  }
+  const budget = Math.min(effortDays, maxEffortDays);
+  if (effortUsed > budget) {
+    throw validationError(
+      `These dates span ${effortUsed} working days, but this task is budgeted for ${budget}. ` +
+        'Pick a shorter window, or request a deadline extension once the dates are agreed.',
+      [{ path: 'dueDate', message: `must cover ${budget} working day(s) or fewer` }],
+    );
+  }
+
+  return { startDate: start, dueDate: due, effortUsed, dayPlans: normaliseDayPlans(start, due, input.dayPlans) };
 }

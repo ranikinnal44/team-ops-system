@@ -53,10 +53,10 @@ export type AppConfig = {
     /** Working days a task may run without a daily outcome before it is chased. */
     readonly dailyUpdateWorkingDays: number;
     /**
-     * Longest span, in inclusive calendar days, a task may cover. Work that
+     * Largest effort budget, in WORKING days, a task may carry. Work that
      * needs longer is a milestone, not a task, and has to be broken down.
      */
-    readonly maxTaskSpanDays: number;
+    readonly maxTaskEffortDays: number;
   };
   /** Calendar date that project week W1 starts from. */
   readonly weekAnchor: string;
@@ -80,7 +80,9 @@ export function loadConfig(): AppConfig {
       dueSoonDays: int('DUE_SOON_DAYS', 2),
       noUpdateWorkingDays: int('NO_UPDATE_WORKING_DAYS', 2),
       dailyUpdateWorkingDays: int('DAILY_UPDATE_WORKING_DAYS', 1),
-      maxTaskSpanDays: int('MAX_TASK_SPAN_DAYS', 3),
+      // MAX_TASK_SPAN_DAYS is the old name for the same cap; still read so an
+      // existing .env keeps working.
+      maxTaskEffortDays: int('MAX_TASK_EFFORT_DAYS', int('MAX_TASK_SPAN_DAYS', 5)),
     },
     weekAnchor: weekAnchor(),
     integrations: {

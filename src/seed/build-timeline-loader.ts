@@ -24,11 +24,11 @@ import * as activityRepo from '../repositories/activity.repo.ts';
 import * as clarificationRepo from '../repositories/clarification.repo.ts';
 import * as supplyRepo from '../repositories/supply.repo.ts';
 import { BUILD_TIMELINE, type BuildTimelineDataset } from './build-timeline-data.ts';
-import { TaskStatus, HistoryKind, ClarificationCode, Origin } from '../domain/enums.ts';
+import { TaskStatus, HistoryKind, ClarificationCode, Origin, ScheduleState } from '../domain/enums.ts';
 import { formatTaskRef } from '../lib/ids.ts';
 import { createWeekResolver, parseDueWeek } from '../lib/weeks.ts';
 import { config } from '../config/index.ts';
-import { nowTimestamp, addDays, daysBetween, type IsoDate } from '../lib/dates.ts';
+import { nowTimestamp, addDays, daysBetween, type IsoDate, workingDaysInclusive } from '../lib/dates.ts';
 
 const IMPORT_ACTOR_LABEL = 'Build timeline import';
 
@@ -164,6 +164,10 @@ export function importBuildTimeline(
           progress: 0,
           startDate: span.startDate,
           dueDate: span.dueDate,
+          // The plan states these dates, so they arrive already agreed; the
+          // budget is read back out of the window rather than invented.
+          effortDays: workingDaysInclusive(span.startDate, span.dueDate) || 1,
+          scheduleState: ScheduleState.Locked,
           sourceDate: null,
           nextAction: null,
           origin: Origin.Import,

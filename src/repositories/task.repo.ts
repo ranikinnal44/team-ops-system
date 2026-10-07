@@ -4,7 +4,7 @@
 import type { Database } from '../db/connection.ts';
 import { toText } from '../db/connection.ts';
 import type { Task, TaskContext, TaskDayPlan } from '../domain/types.ts';
-import type { TaskStatus, Priority, Origin } from '../domain/enums.ts';
+import type { TaskStatus, Priority, Origin, ScheduleState } from '../domain/enums.ts';
 import { newId } from '../lib/ids.ts';
 import { nowTimestamp, type IsoDate, type IsoTimestamp } from '../lib/dates.ts';
 
@@ -22,6 +22,14 @@ type TaskRow = {
   status: string;
   progress: number | null;
   progress_note: string | null;
+  effort_days: number | null;
+  original_effort_days: number | null;
+  schedule_state: string;
+  schedule_proposed_by_id: string | null;
+  schedule_proposed_at: string | null;
+  schedule_approved_by_id: string | null;
+  schedule_approved_at: string | null;
+  schedule_review_note: string | null;
   start_date: string | null;
   due_date: string | null;
   original_due_date: string | null;
@@ -101,6 +109,14 @@ function mapTask(
     status: row.status as TaskStatus,
     progress: row.progress === null ? null : row.progress,
     progressNote: toText(row.progress_note),
+    effortDays: row.effort_days,
+    originalEffortDays: row.original_effort_days,
+    scheduleState: row.schedule_state as ScheduleState,
+    scheduleProposedById: toText(row.schedule_proposed_by_id),
+    scheduleProposedAt: toText(row.schedule_proposed_at),
+    scheduleApprovedById: toText(row.schedule_approved_by_id),
+    scheduleApprovedAt: toText(row.schedule_approved_at),
+    scheduleReviewNote: toText(row.schedule_review_note),
     startDate: toText(row.start_date),
     dueDate: toText(row.due_date),
     originalDueDate: toText(row.original_due_date),
@@ -225,6 +241,14 @@ export type NewTaskRecord = {
    * measuring slippage against one would invent a promise nobody made.
    */
   originalDueDate?: IsoDate | null;
+  effortDays?: number | null;
+  /** Defaults to `effortDays`; the first estimate, kept for slippage reporting. */
+  originalEffortDays?: number | null;
+  scheduleState?: ScheduleState;
+  scheduleProposedById?: string | null;
+  scheduleProposedAt?: IsoTimestamp | null;
+  scheduleApprovedById?: string | null;
+  scheduleApprovedAt?: IsoTimestamp | null;
   sourceDate?: IsoDate | null;
   blocker?: string | null;
   nextAction: string | null;
@@ -253,11 +277,14 @@ export function insertTask(db: Database, input: NewTaskRecord): string {
     `INSERT INTO tasks (
        id, ref, workstream_id, milestone_id, deliverable_id, title, description,
        owner_id, reviewer_id, priority, status, progress, progress_note,
+       effort_days, original_effort_days, schedule_state,
+       schedule_proposed_by_id, schedule_proposed_at,
+       schedule_approved_by_id, schedule_approved_at,
        start_date, due_date, original_due_date, source_date,
        blocker, next_action, evidence_url, review_note,
        origin, source_ref, source_status, source_owner_label, source_timeline,
        created_by_id, created_at, last_updated_at, completed_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.ref,
@@ -272,6 +299,13 @@ export function insertTask(db: Database, input: NewTaskRecord): string {
     input.status,
     input.progress,
     input.progressNote ?? null,
+    input.effortDays ?? null,
+    input.originalEffortDays === undefined ? (input.effortDays ?? null) : input.originalEffortDays,
+    input.scheduleState ?? 'unset',
+    input.scheduleProposedById ?? null,
+    input.scheduleProposedAt ?? null,
+    input.scheduleApprovedById ?? null,
+    input.scheduleApprovedAt ?? null,
     input.startDate,
     input.dueDate,
     input.originalDueDate === undefined ? input.dueDate : input.originalDueDate,
@@ -359,6 +393,14 @@ const COLUMN_BY_FIELD: Record<string, string> = {
   completedAt: 'completed_at',
   progressNote: 'progress_note',
   reviewNote: 'review_note',
+  effortDays: 'effort_days',
+  originalEffortDays: 'original_effort_days',
+  scheduleState: 'schedule_state',
+  scheduleProposedById: 'schedule_proposed_by_id',
+  scheduleProposedAt: 'schedule_proposed_at',
+  scheduleApprovedById: 'schedule_approved_by_id',
+  scheduleApprovedAt: 'schedule_approved_at',
+  scheduleReviewNote: 'schedule_review_note',
 };
 
 export type TaskColumnPatch = Record<string, string | number | null>;

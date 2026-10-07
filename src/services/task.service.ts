@@ -33,6 +33,7 @@ import {
   DeadlineRequestStatus,
   ClarificationCode,
   type ExceptionFlag,
+  ScheduleState,
 } from '../domain/enums.ts';
 import {
   assertTransition,
@@ -51,10 +52,11 @@ import {
 import { evaluateTask, attentionScore, type RuleThresholds } from '../domain/exceptions.ts';
 import {
   normaliseSchedule,
-  taskSpanDays,
   uncoveredDays,
   needsDayOutcomes,
   describeSchedule,
+  normaliseEffortDays,
+  normaliseProposedSchedule,
 } from '../domain/task-schedule.ts';
 import { config } from '../config/index.ts';
 import { formatTaskRef } from '../lib/ids.ts';
@@ -62,6 +64,7 @@ import {
   todayDate,
   nowTimestamp,
   daysBetween,
+  workingDaysInclusive,
   formatDateHuman,
   type IsoDate,
 } from '../lib/dates.ts';
@@ -86,8 +89,8 @@ const transitionActor = (
   isReviewer: task.reviewerId !== null && task.reviewerId === actor.id,
 });
 
-/** Longest span a task may cover, in inclusive calendar days. */
-const maxSpanDays = (): number => config.rules.maxTaskSpanDays;
+/** Largest effort budget a task may carry, in working days. */
+const maxEffortDays = (): number => config.rules.maxTaskEffortDays;
 
 /** The sentence the clarification queue shows for days with no outcome. */
 const missingOutcomesDetail = (days: readonly IsoDate[]): string =>
@@ -190,10 +193,19 @@ export type CreateTaskInput = {
   supportingMemberIds?: readonly string[];
   /** Omit to leave the priority unassigned rather than guessing one. */
   priority?: Priority | null;
-  /** Required. Undated work cannot be chased, so it is not accepted. */
-  startDate: IsoDate;
-  /** Required, and at most `maxTaskSpanDays` days after the start date. */
-  dueDate: IsoDate;
+  /**
+   * Required: how many working days this should take. Dates are not the
+   * manager's to set — the owner proposes days that spend this budget and the
+   * reviewer agrees them.
+   */
+  effortDays: number;
+  /**
+   * Optional manager override. Supplying both dates schedules the task
+   * directly and locks it, because the manager is the authority the reviewer
+   * would otherwise be standing in for. Omit them for the normal flow.
+   */
+  startDate?: IsoDate;
+  dueDate?: IsoDate;
   /** One per calendar day; required once the task covers more than one day. */
   dayPlans?: readonly TaskDayPlan[];
   dependencyTaskIds?: readonly string[];
@@ -247,9 +259,18 @@ export function createTask(
   for (const id of input.supportingMemberIds ?? []) {
     assertActiveUser(db, id, 'supportingMemberIds', 'Supporting member');
   }
-  // Dates are mandatory, bounded in length, and a multi-day task has to say
-  // what each of its days delivers. All three are decided in one place.
-  const schedule = normaliseSchedule(input, maxSpanDays());
+  const effortDays = normaliseEffortDays(input.effortDays, maxEffortDays());
+  // Dates are optional at creation. When a manager supplies them the task is
+  // scheduled and locked on the spot; otherwise it starts life unscheduled and
+  // waits for its owner to propose a window.
+  const scheduled =
+    input.startDate !== undefined && input.dueDate !== undefined
+      ? normaliseProposedSchedule(
+          { startDate: input.startDate, dueDate: input.dueDate, dayPlans: input.dayPlans },
+          effortDays,
+          maxEffortDays(),
+        )
+      : null;
   assertDependenciesExist(db, input.dependencyTaskIds ?? []);
 
   return transaction(db, () => {
@@ -268,13 +289,18 @@ export function createTask(
       priority: input.priority ?? null,
       status: TaskStatus.NotStarted,
       progress: 0,
-      startDate: schedule.startDate,
-      dueDate: schedule.dueDate,
+      effortDays,
+      originalEffortDays: effortDays,
+      scheduleState: scheduled === null ? ScheduleState.Unset : ScheduleState.Locked,
+      scheduleApprovedById: scheduled === null ? null : actor.id,
+      scheduleApprovedAt: scheduled === null ? null : nowTimestamp(now),
+      startDate: scheduled?.startDate ?? null,
+      dueDate: scheduled?.dueDate ?? null,
       nextAction: input.nextAction ?? null,
       createdById: actor.id,
       supportingMemberIds: input.supportingMemberIds ?? [],
       dependencyTaskIds: input.dependencyTaskIds ?? [],
-      dayPlans: schedule.dayPlans,
+      dayPlans: scheduled?.dayPlans ?? [],
     });
 
     const ownerName = input.ownerId
@@ -287,30 +313,33 @@ export function createTask(
       actorId: actor.id,
       kind: HistoryKind.Created,
       note:
-        `Task created and assigned to ${ownerName}, ` +
-        `${describeSchedule(schedule.startDate, schedule.dueDate)} (${priorityText}).`,
+        `Task created and assigned to ${ownerName}, budgeted at ` +
+        `${effortDays} working day${effortDays === 1 ? '' : 's'} (${priorityText})` +
+        (scheduled === null
+          ? ', dates to be proposed by its owner.'
+          : `, scheduled ${describeSchedule(scheduled.startDate, scheduled.dueDate)} by the manager.`),
       createdAt: timestamp,
     });
 
     // The day-by-day plan is part of the commitment, so it belongs in the log
     // next to the dates rather than only in the task record. One entry for the
     // whole plan, not one per day — the feed stays readable.
-    if (schedule.dayPlans.length > 0) {
+    if (scheduled !== null && scheduled.dayPlans.length > 0) {
       activityRepo.appendHistory(db, {
         taskId,
         actorId: actor.id,
         kind: HistoryKind.FieldChanged,
         field: 'dayPlans',
         fromValue: null,
-        toValue: formatDayPlans(schedule.dayPlans),
-        note: `Outcomes defined for each of the ${schedule.spanDays} days.`,
+        toValue: formatDayPlans(scheduled.dayPlans),
+        note: `Outcomes defined for each of the ${scheduled.effortUsed} working days.`,
         createdAt: timestamp,
       });
     }
 
     // Anything left undecided at creation goes straight onto the manager's
-    // clarification queue instead of being silently defaulted. Dates are no
-    // longer among them: a task cannot be created without them.
+    // clarification queue instead of being silently defaulted. Dates are not
+    // among them: an unscheduled task is a normal state with its own flag.
     if (!input.priority) {
       clarificationRepo.raiseClarification(db, {
         taskId,
@@ -435,6 +464,24 @@ export function updateTask(
   const { comment, ...fields } = input;
   const touched = Object.keys(fields) as TaskField[];
   assertCanWriteTaskFields(actor.role, touched);
+
+  // Agreed DATES are a commitment, not a field: once locked they move only
+  // through the extension flow, which records who approved the change and why
+  // — including for a manager, who would otherwise leave no trace.
+  //
+  // Day outcomes are deliberately NOT locked. They say what each agreed day
+  // delivers, not when the work happens, and an approved extension leaves new
+  // days owing one; sealing them would leave that gap with no way to fill it.
+  const SCHEDULE_FIELDS = ['startDate', 'dueDate'] as const;
+  if (task.scheduleState === ScheduleState.Locked) {
+    const locked = touched.filter((f) => (SCHEDULE_FIELDS as readonly string[]).includes(f));
+    if (locked.length > 0) {
+      throw conflict(
+        'These dates are agreed and locked. Request a deadline extension to move them ' +
+          `(fields: ${locked.join(', ')}).`,
+      );
+    }
+  }
   if (touched.length === 0 && comment === undefined) {
     throw validationError('Nothing to update', [{ path: 'body', message: 'provide at least one field' }]);
   }
@@ -452,6 +499,18 @@ export function updateTask(
   let nextStatus = task.status;
   if (fields.status !== undefined && fields.status !== task.status) {
     assertTransition(task.status, fields.status, transitionActor(task, actor));
+    // Nothing starts on an unagreed schedule. The dates are the commitment,
+    // and work begun before anyone agreed them is work against no commitment.
+    if (fields.status === TaskStatus.InProgress && task.status === TaskStatus.NotStarted) {
+      if (task.scheduleState !== ScheduleState.Locked) {
+        throw conflict(
+          task.scheduleState === ScheduleState.Proposed
+            ? 'These dates are still with the reviewer. Work starts once they are agreed.'
+            : 'This task has no agreed dates yet. Propose a start and end date first.',
+        );
+      }
+    }
+
     // Applying for review needs somebody to apply TO. Imported work predates
     // the rule, so this is caught here rather than at the door.
     if (fields.status === TaskStatus.Review && task.reviewerId === null) {
@@ -619,7 +678,7 @@ export function updateTask(
         : [];
     nextDayPlans = normaliseSchedule(
       { startDate: startAfter, dueDate: dueAfter, dayPlans: fields.dayPlans ?? carried },
-      maxSpanDays(),
+      maxEffortDays(),
     ).dayPlans;
   }
 
@@ -933,21 +992,28 @@ export function requestDeadlineChange(
       { path: 'requestedDueDate', message: 'must differ from the current due date' },
     ]);
   }
-  // The span limit is a policy about the work, not about who is asking, so an
-  // extension cannot be used to route around it. Imported tasks with no start
-  // date have no span to measure and are left alone.
+  // Extending is for an agreed schedule. Before that there is nothing to
+  // extend — the owner simply proposes different dates.
+  if (task.scheduleState !== ScheduleState.Locked) {
+    throw conflict(
+      'These dates are not agreed yet, so there is nothing to extend. ' +
+        'Propose the dates you need instead.',
+    );
+  }
+  // The budget cap is a policy about the work, not about who is asking, so an
+  // extension cannot be used to route around it.
   if (task.startDate !== null) {
-    const requestedSpan = taskSpanDays(task.startDate, input.requestedDueDate);
-    if (requestedSpan < 1) {
+    const requestedEffort = workingDaysInclusive(task.startDate, input.requestedDueDate);
+    if (requestedEffort < 1) {
       throw validationError('The requested date is before the task starts', [
         { path: 'requestedDueDate', message: 'must be on or after the start date' },
       ]);
     }
-    if (requestedSpan > maxSpanDays()) {
+    if (requestedEffort > maxEffortDays()) {
       throw validationError(
-        `That would make the task span ${requestedSpan} days; the limit is ${maxSpanDays()}. ` +
+        `That would make the task ${requestedEffort} working days; the cap is ${maxEffortDays()}. ` +
           'Split the remaining work into a new task instead.',
-        [{ path: 'requestedDueDate', message: `must be within ${maxSpanDays()} day(s) of the start date` }],
+        [{ path: 'requestedDueDate', message: `must fit within ${maxEffortDays()} working day(s)` }],
       );
     }
   }
@@ -1009,9 +1075,33 @@ export function decideDeadlineChange(
     });
 
     if (decision.approve) {
-      // `original_due_date` is deliberately left untouched so slippage against
-      // the first commitment stays visible after any number of extensions.
-      taskRepo.updateTaskColumns(db, request.taskId, { dueDate: request.requestedDueDate }, timestamp);
+      // `original_due_date` and `original_effort_days` are deliberately left
+      // untouched, so slippage against the FIRST commitment stays measurable
+      // after any number of extensions. The current budget rises to match the
+      // new window; leaving it behind would put the task permanently in breach
+      // of its own budget and fail every later validation of the row.
+      const task = requireTask(db, request.taskId);
+      const patch: taskRepo.TaskColumnPatch = { dueDate: request.requestedDueDate };
+      const newEffort =
+        task.startDate === null
+          ? null
+          : workingDaysInclusive(task.startDate, request.requestedDueDate);
+      if (newEffort !== null && task.effortDays !== null && newEffort > task.effortDays) {
+        patch.effortDays = newEffort;
+        activityRepo.appendHistory(db, {
+          taskId: request.taskId,
+          actorId: actor.id,
+          kind: HistoryKind.EffortChanged,
+          field: 'effortDays',
+          fromValue: `${task.effortDays} working days`,
+          toValue: `${newEffort} working days`,
+          note:
+            `Raised to match the approved extension. Original estimate: ` +
+            `${task.originalEffortDays ?? task.effortDays} working days.`,
+          createdAt: timestamp,
+        });
+      }
+      taskRepo.updateTaskColumns(db, request.taskId, patch, timestamp);
       applyDayPlanGapAfterReschedule(db, request.taskId, request.requestedDueDate, actor.id);
     }
 
@@ -1217,4 +1307,155 @@ export function listDayLogs(db: Database, actor: Actor, taskId: string): TaskDay
   if (!task) throw notFound('Task');
   assertCanViewTask(actor.role, task, actor.id);
   return dayLogRepo.listDayLogs(db, task.id);
+}
+
+// --- proposing and agreeing a schedule ------------------------------------
+
+export type ProposeScheduleInput = {
+  startDate: IsoDate;
+  dueDate: IsoDate;
+  dayPlans?: readonly TaskDayPlan[];
+};
+
+/**
+ * The owner proposes the days that will spend their effort budget.
+ *
+ * Only the owner: these are the dates they are committing to, and a commitment
+ * made on someone's behalf is not a commitment. A manager can still schedule a
+ * task directly at creation, which locks it without a proposal.
+ */
+export function proposeSchedule(
+  db: Database,
+  actor: Actor,
+  taskId: string,
+  input: ProposeScheduleInput,
+  now = new Date(),
+): TaskView {
+  const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
+  if (!task) throw notFound('Task');
+  assertCanViewTask(actor.role, task, actor.id);
+
+  if (task.ownerId !== actor.id && actor.role !== Role.Manager) {
+    throw forbidden('Only the task owner can propose its dates — they are the commitment.');
+  }
+  if (task.scheduleState === ScheduleState.Locked) {
+    throw conflict(
+      'This schedule is agreed and locked. Request a deadline extension to move it.',
+    );
+  }
+  if (task.effortDays === null) {
+    throw conflict(
+      'This task has no effort budget yet, so there is nothing to schedule against. ' +
+        'A manager must set one first.',
+    );
+  }
+
+  const proposed = normaliseProposedSchedule(input, task.effortDays, maxEffortDays());
+
+  return transaction(db, () => {
+    const timestamp = nowTimestamp(now);
+    taskRepo.updateTaskColumns(
+      db,
+      task.id,
+      {
+        startDate: proposed.startDate,
+        dueDate: proposed.dueDate,
+        // The first proposal sets the baseline the extension flow measures against.
+        originalDueDate: task.originalDueDate ?? proposed.dueDate,
+        scheduleState: ScheduleState.Proposed,
+        scheduleProposedById: actor.id,
+        scheduleProposedAt: timestamp,
+        scheduleReviewNote: null,
+      },
+      timestamp,
+    );
+    taskRepo.replaceDayPlans(db, task.id, proposed.dayPlans);
+    activityRepo.appendHistory(db, {
+      taskId: task.id,
+      actorId: actor.id,
+      kind: HistoryKind.ScheduleProposed,
+      field: 'schedule',
+      fromValue:
+        task.startDate && task.dueDate ? describeSchedule(task.startDate, task.dueDate) : null,
+      toValue: describeSchedule(proposed.startDate, proposed.dueDate),
+      note:
+        `${proposed.effortUsed} of ${task.effortDays} budgeted working day` +
+        `${task.effortDays === 1 ? '' : 's'}. Awaiting review.`,
+      createdAt: timestamp,
+    });
+    return toTaskView(db, requireTask(db, task.id), todayDate(now));
+  });
+}
+
+/**
+ * The reviewer agrees the proposed dates, or sends them back.
+ *
+ * Approval locks them: from here only an approved deadline extension moves
+ * them. A rejection returns the task to `unset` but KEEPS the dates, so the
+ * owner edits a draft rather than starting from a blank form, with the
+ * reviewer's note explaining what to change.
+ */
+export function decideSchedule(
+  db: Database,
+  actor: Actor,
+  taskId: string,
+  decision: { approve: boolean; note?: string | null },
+  now = new Date(),
+): TaskView {
+  const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
+  if (!task) throw notFound('Task');
+  assertCanViewTask(actor.role, task, actor.id);
+
+  const isReviewer = task.reviewerId !== null && task.reviewerId === actor.id;
+  if (!isReviewer && actor.role !== Role.Manager) {
+    throw forbidden(
+      "Only this task's reviewer can agree its dates. A schedule nobody checked is not agreed.",
+    );
+  }
+  if (task.scheduleState !== ScheduleState.Proposed) {
+    throw conflict(
+      task.scheduleState === ScheduleState.Locked
+        ? 'This schedule is already agreed.'
+        : 'There is no proposed schedule to decide on.',
+    );
+  }
+
+  return transaction(db, () => {
+    const timestamp = nowTimestamp(now);
+    taskRepo.updateTaskColumns(
+      db,
+      task.id,
+      decision.approve
+        ? {
+            scheduleState: ScheduleState.Locked,
+            scheduleApprovedById: actor.id,
+            scheduleApprovedAt: timestamp,
+            scheduleReviewNote: decision.note ?? null,
+          }
+        : {
+            scheduleState: ScheduleState.Unset,
+            scheduleApprovedById: null,
+            scheduleApprovedAt: null,
+            scheduleReviewNote: decision.note ?? null,
+          },
+      timestamp,
+    );
+    activityRepo.appendHistory(db, {
+      taskId: task.id,
+      actorId: actor.id,
+      kind: decision.approve ? HistoryKind.ScheduleApproved : HistoryKind.ScheduleRejected,
+      field: 'schedule',
+      toValue:
+        task.startDate && task.dueDate ? describeSchedule(task.startDate, task.dueDate) : null,
+      note: decision.note ?? (decision.approve ? 'Dates agreed and locked.' : 'Sent back for rework.'),
+      createdAt: timestamp,
+    });
+    return toTaskView(db, requireTask(db, task.id), todayDate(now));
+  });
+}
+
+function requireTask(db: Database, taskId: string): taskRepo.TaskWithContext {
+  const task = taskRepo.findTaskById(db, taskId);
+  if (!task) throw notFound('Task');
+  return task;
 }

@@ -24,7 +24,8 @@ import { importBuildTimeline, type TimelineImportReport } from './build-timeline
 import { BUILD_TIMELINE } from './build-timeline-data.ts';
 import { mapSourceStatus } from './source-record.ts';
 import type { IsoDate } from '../lib/dates.ts';
-import { TaskStatus, HistoryKind, ClarificationCode, Origin } from '../domain/enums.ts';
+import { TaskStatus, HistoryKind, ClarificationCode, Origin, ScheduleState } from '../domain/enums.ts';
+import { workingDaysInclusive } from '../lib/dates.ts';
 import { formatTaskRef } from '../lib/ids.ts';
 
 const IMPORT_ACTOR_LABEL = 'Daily task log import';
@@ -232,6 +233,13 @@ export function importAutoDock(
           // should be read as a commitment the source made.
           startDate: record.sourceDate,
           dueDate: record.sourceDate,
+          // The log records the day a task was RAISED, and that date only
+          // stands in as start and due so the record can exist at all — which
+          // is exactly what the MISSING_DUE_DATE clarification below says. A
+          // stand-in is not an agreement, so these arrive unscheduled and a
+          // manager still has to commit to real dates.
+          effortDays: null,
+          scheduleState: ScheduleState.Unset,
           // No baseline: nobody committed to this date, so there is nothing to
           // measure slippage against until a real deadline is set.
           originalDueDate: null,

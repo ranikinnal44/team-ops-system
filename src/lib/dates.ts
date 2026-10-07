@@ -80,6 +80,24 @@ export function workingDaysBetween(from: IsoDate, to: IsoDate): number {
   return count;
 }
 
+/**
+ * Working days (Mon-Fri) in `[start, due]` INCLUSIVE, which is how effort is
+ * counted: Monday to Wednesday is three days of work, and a task that starts
+ * and ends on the same working day is one.
+ *
+ * Deliberately different from `workingDaysBetween`, which is exclusive of its
+ * start because it measures elapsed time rather than effort.
+ */
+export function workingDaysInclusive(start: IsoDate, due: IsoDate): number {
+  const span = daysBetween(start, due);
+  if (span < 0) return 0;
+  let count = 0;
+  for (let offset = 0; offset <= span; offset += 1) {
+    if (!isWeekend(addDays(start, offset))) count += 1;
+  }
+  return count;
+}
+
 /** Monday-to-Sunday week containing `date`, as inclusive bounds. */
 export function weekBounds(date: IsoDate): { start: IsoDate; end: IsoDate } {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];

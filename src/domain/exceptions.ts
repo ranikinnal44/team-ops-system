@@ -7,7 +7,7 @@
  *
  * Notifications are intentionally NOT fired here; Layer 1 only computes flags.
  */
-import { ExceptionFlag, TaskStatus } from './enums.ts';
+import { ExceptionFlag, TaskStatus, ScheduleState } from './enums.ts';
 import {
   todayDate,
   dateOfTimestamp,
@@ -38,6 +38,8 @@ export type EvaluableTask = {
    * the last one.
    */
   readonly lastDayLogDate?: IsoDate | null;
+  /** Omitted by callers that do not load it; the rules then stay silent. */
+  readonly scheduleState?: ScheduleState;
 };
 
 export type RuleThresholds = {
@@ -116,6 +118,26 @@ export function needsDailyUpdate(
   return workingDaysBetween(task.lastDayLogDate, today) > thresholds.dailyUpdateWorkingDays;
 }
 
+/**
+ * Budgeted and assigned, but the owner has not proposed dates yet.
+ *
+ * Only Not Started work can be in this state — nothing can begin until its
+ * schedule is agreed — so this is the queue of work waiting on its owner.
+ */
+export const needsSchedule = (task: EvaluableTask): boolean =>
+  isOpen(task) &&
+  task.status === TaskStatus.NotStarted &&
+  task.scheduleState === ScheduleState.Unset;
+
+/**
+ * Dates proposed, reviewer has not decided.
+ *
+ * This one blocks work outright, so it is the flag that says somebody is
+ * sitting idle waiting on a review rather than merely running late.
+ */
+export const awaitingScheduleReview = (task: EvaluableTask): boolean =>
+  isOpen(task) && task.scheduleState === ScheduleState.Proposed;
+
 /** Status == Blocked */
 export const isBlocked = (task: EvaluableTask): boolean => task.status === TaskStatus.Blocked;
 
@@ -151,6 +173,8 @@ export function evaluateTask(
   if (isBlocked(task)) flags.push(ExceptionFlag.Blocked);
   if (hasNoRecentUpdate(task, today, thresholds)) flags.push(ExceptionFlag.NoRecentUpdate);
   if (needsDailyUpdate(task, today, thresholds)) flags.push(ExceptionFlag.MissingDailyUpdate);
+  if (needsSchedule(task)) flags.push(ExceptionFlag.ScheduleNotSet);
+  if (awaitingScheduleReview(task)) flags.push(ExceptionFlag.ScheduleAwaitingReview);
   return flags;
 }
 
@@ -185,5 +209,8 @@ export function attentionScore(
   if (flags.includes(ExceptionFlag.DueSoon)) score += 35;
   if (flags.includes(ExceptionFlag.NoRecentUpdate)) score += 25;
   if (flags.includes(ExceptionFlag.MissingDailyUpdate)) score += 20;
+  // Nobody can work on these at all, so they outrank a merely stale update.
+  if (flags.includes(ExceptionFlag.ScheduleAwaitingReview)) score += 45;
+  if (flags.includes(ExceptionFlag.ScheduleNotSet)) score += 30;
   return score;
 }

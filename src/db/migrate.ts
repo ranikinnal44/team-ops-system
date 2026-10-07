@@ -9,9 +9,16 @@ import { createDatabase } from './connection.ts';
 import { config } from '../config/index.ts';
 import { nowTimestamp } from '../lib/dates.ts';
 
-export const SCHEMA_VERSION = '6';
+export const SCHEMA_VERSION = '7';
 
 /**
+ * Schema 7 moved scheduling: a manager now sets an effort budget in working
+ * days and the owner proposes the dates that spend it, so `start_date` and
+ * `due_date` became nullable again (reversing v5) and the task gained
+ * `effort_days`, `original_effort_days` and the `schedule_*` columns. SQLite
+ * cannot drop a NOT NULL constraint in place, so a v5 or v6 database is
+ * detected and refused rather than half-migrated.
+ *
  * Schema 6 added `task_day_logs` — what a day actually produced, as reported
  * by whoever did the work, alongside the `task_day_plans` that say what it was
  * meant to produce. Purely additive, so the `CREATE TABLE IF NOT EXISTS` in the
@@ -44,12 +51,12 @@ function assertNotStaleSchema(db: ReturnType<typeof createDatabase>): void {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'supply_items'")
       .get() as { name: string } | undefined;
     if (supply) {
-      const dates = columns.filter((c) => c.name === 'start_date' || c.name === 'due_date');
-      if (dates.every((c) => c.notnull === 1)) return;
+      // v7 is the current shape; anything older cannot be migrated in place.
+      if (columns.some((c) => c.name === 'schedule_state')) return;
       throw new Error(
-        'This database predates schema v5, where start and end dates became mandatory on ' +
-          'tasks, milestones and deliverables. SQLite cannot add a NOT NULL constraint in ' +
-          'place, and existing rows may carry no dates at all.\n' +
+        'This database predates schema v7, where a task carries an effort budget in working ' +
+          'days and its dates are proposed by the owner rather than set at creation. That ' +
+          'makes start and end dates nullable again, which SQLite cannot do in place.\n' +
           '  Reset the development database and reload a dataset:\n' +
           '    rm -f data/team-ops.db*\n    npm run setup',
       );

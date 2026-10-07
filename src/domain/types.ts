@@ -11,6 +11,7 @@ import type {
   DeadlineRequestStatus,
   Origin,
   ClarificationCode,
+  ScheduleState,
 } from './enums.ts';
 import type { IsoDate, IsoTimestamp } from '../lib/dates.ts';
 
@@ -104,6 +105,21 @@ export type Task = {
   readonly progress: number | null;
   /** Qualitative progress kept verbatim from the source, e.g. "70-80% Done". */
   readonly progressNote: string | null;
+  /**
+   * The manager's budget, in working days. Set at creation; raised only by an
+   * approved deadline extension, which preserves the original below.
+   */
+  readonly effortDays: number | null;
+  /** The first estimate, never changed, so slippage stays measurable. */
+  readonly originalEffortDays: number | null;
+  readonly scheduleState: ScheduleState;
+  readonly scheduleProposedById: string | null;
+  readonly scheduleProposedAt: IsoTimestamp | null;
+  readonly scheduleApprovedById: string | null;
+  readonly scheduleApprovedAt: IsoTimestamp | null;
+  /** Why a proposal was sent back, shown to the owner when they re-propose. */
+  readonly scheduleReviewNote: string | null;
+  /** Proposed by the owner, agreed by the reviewer. Null until then. */
   readonly startDate: IsoDate | null;
   readonly dueDate: IsoDate | null;
   /** The deadline first committed to; preserved across approved changes. */

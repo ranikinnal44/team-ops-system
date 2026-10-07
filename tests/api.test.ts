@@ -167,6 +167,7 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
         description: 'Created by the API test.',
         ownerId: employee.id,
         reviewerId: reviewer.id,
+        effortDays: 5,
         priority: 'P1',
         startDate: todayDate(),
         dueDate: addDays(todayDate(), 2),
@@ -359,7 +360,7 @@ describe('project view', () => {
   });
 });
 
-describe('dates are mandatory at the API boundary', () => {
+describe('dates at the API boundary', () => {
   let workstreamId: string;
   let milestoneId: string;
   let taskId: string;
@@ -403,24 +404,80 @@ describe('dates are mandatory at the API boundary', () => {
     assert.ok(pathsOf(body).includes('dueDate'));
   });
 
-  test('a task deadline can be moved but not cleared', async () => {
-    const cleared = await server.request('PATCH', `/api/tasks/${taskId}`, {
-      token: managerToken,
-      body: { dueDate: null },
-    });
-    assert.equal(cleared.status, 400);
-    assert.ok(pathsOf(cleared.body).includes('dueDate'));
-
+  test('an agreed schedule cannot be patched, even by a manager', async () => {
     const start = todayDate();
-    const moved = await server.request('PATCH', `/api/tasks/${taskId}`, {
+    const patched = await server.request('PATCH', `/api/tasks/${taskId}`, {
       token: managerToken,
-      body: { startDate: start, dueDate: addDays(start, 1), dayPlans: [
-        { date: start, outcome: 'Still moving the dates.' },
-        { date: addDays(start, 1), outcome: 'Finished.' },
-      ] },
+      body: { startDate: start, dueDate: addDays(start, 1) },
     });
-    assert.equal(moved.status, 200);
-    assert.equal(moved.body.dueDate, addDays(start, 1));
+    assert.equal(patched.status, 409, 'locked dates move only through the extension flow');
+    assert.match(patched.body.error.message, /extension/i);
+  });
+
+  test('a task is created with a budget, and its owner proposes the dates', async () => {
+    const users = await server.request('GET', '/api/users', { token: managerToken });
+    const owner = users.body.find((u: { email: string }) => u.email === 'demo.employee1@example.com');
+    const reviewer = users.body.find((u: { email: string }) => u.email === 'demo.employee2@example.com');
+
+    const created = await server.request('POST', '/api/tasks', {
+      token: managerToken,
+      body: {
+        workstreamId,
+        milestoneId,
+        title: 'Budgeted, not yet scheduled',
+        ownerId: owner.id,
+        reviewerId: reviewer.id,
+        effortDays: 2,
+        priority: 'P2',
+      },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.scheduleState, 'unset');
+    assert.equal(created.body.startDate, null);
+    assert.ok(created.body.exceptions.includes('SCHEDULE_NOT_SET'));
+    const id = created.body.id;
+
+    // Work cannot start on dates nobody has agreed.
+    const earlyStart = await server.request('PATCH', `/api/tasks/${id}`, {
+      token: employeeToken,
+      body: { status: 'in_progress' },
+    });
+    assert.equal(earlyStart.status, 409);
+
+    const proposed = await server.request('POST', `/api/tasks/${id}/schedule`, {
+      token: employeeToken,
+      body: { startDate: todayDate(), dueDate: todayDate() },
+    });
+    assert.equal(proposed.status, 200);
+    assert.equal(proposed.body.scheduleState, 'proposed');
+    assert.ok(proposed.body.exceptions.includes('SCHEDULE_AWAITING_REVIEW'));
+
+    // Still not startable: proposed is not agreed.
+    const stillEarly = await server.request('PATCH', `/api/tasks/${id}`, {
+      token: employeeToken,
+      body: { status: 'in_progress' },
+    });
+    assert.equal(stillEarly.status, 409);
+
+    // The owner cannot wave their own dates through.
+    const selfApprove = await server.request('POST', `/api/tasks/${id}/schedule/decision`, {
+      token: employeeToken,
+      body: { approve: true },
+    });
+    assert.equal(selfApprove.status, 403);
+
+    const agreed = await server.request('POST', `/api/tasks/${id}/schedule/decision`, {
+      token: reviewerToken,
+      body: { approve: true },
+    });
+    assert.equal(agreed.status, 200);
+    assert.equal(agreed.body.scheduleState, 'locked');
+
+    const started = await server.request('PATCH', `/api/tasks/${id}`, {
+      token: employeeToken,
+      body: { status: 'in_progress' },
+    });
+    assert.equal(started.status, 200, 'agreed dates unlock the work');
   });
 
   test('a milestone span cannot be cleared either', async () => {

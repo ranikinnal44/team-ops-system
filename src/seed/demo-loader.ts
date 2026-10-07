@@ -14,9 +14,9 @@ import * as taskRepo from '../repositories/task.repo.ts';
 import * as activityRepo from '../repositories/activity.repo.ts';
 import * as deadlineRepo from '../repositories/deadline.repo.ts';
 import { DEMO_DATA, type DemoDataset, type DemoTask } from './demo-data.ts';
-import { TaskStatus, HistoryKind, STATUS_LABEL, PRIORITY_LABEL } from '../domain/enums.ts';
+import { TaskStatus, HistoryKind, STATUS_LABEL, PRIORITY_LABEL, ScheduleState } from '../domain/enums.ts';
 import { formatTaskRef } from '../lib/ids.ts';
-import { todayDate, addDays, formatDateHuman, type IsoTimestamp } from '../lib/dates.ts';
+import { todayDate, addDays, formatDateHuman, type IsoTimestamp, workingDaysInclusive } from '../lib/dates.ts';
 import { describeSchedule } from '../domain/task-schedule.ts';
 
 /** An ISO timestamp `days` before now, at a fixed hour, for stable ordering. */
@@ -238,6 +238,14 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
         progress: demoTask.progress ?? (demoTask.status === TaskStatus.Completed ? 100 : 0),
         startDate: addDays(today, demoTask.startInDays),
         dueDate: addDays(today, demoTask.dueInDays),
+        // Demo tasks arrive with their dates already agreed, so the dataset
+        // exercises working tasks rather than a backlog of schedule approvals.
+        effortDays:
+          workingDaysInclusive(
+            addDays(today, demoTask.startInDays),
+            addDays(today, demoTask.dueInDays),
+          ) || 1,
+        scheduleState: ScheduleState.Locked,
         nextAction: demoTask.nextAction ?? null,
         createdById: managerId,
         supportingMemberIds: (demoTask.supportKeys ?? []).map(requireUser),

@@ -47,6 +47,30 @@ export const Role = {
 export type Role = (typeof Role)[keyof typeof Role];
 export const ROLES = Object.values(Role) as readonly Role[];
 
+/**
+ * How settled a task's dates are.
+ *
+ * The manager sets a budget in working days; the employee proposes the dates
+ * that spend it; the reviewer approves them. Once approved the dates are
+ * locked and only an approved deadline extension moves them.
+ */
+export const ScheduleState = {
+  /** No dates proposed yet, or a proposal was sent back. */
+  Unset: 'unset',
+  /** Dates submitted by the owner, awaiting the reviewer. */
+  Proposed: 'proposed',
+  /** Approved and immutable. */
+  Locked: 'locked',
+} as const;
+export type ScheduleState = (typeof ScheduleState)[keyof typeof ScheduleState];
+export const SCHEDULE_STATES = Object.values(ScheduleState) as readonly ScheduleState[];
+
+export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
+  unset: 'Dates not set',
+  proposed: 'Dates awaiting review',
+  locked: 'Dates agreed',
+};
+
 /** Exception flags produced by the rule engine in `exceptions.ts`. */
 export const ExceptionFlag = {
   Overdue: 'OVERDUE',
@@ -55,6 +79,10 @@ export const ExceptionFlag = {
   Blocked: 'BLOCKED',
   /** In progress, but nobody has said what the last working day produced. */
   MissingDailyUpdate: 'MISSING_DAILY_UPDATE',
+  /** Assigned, budgeted, but the owner has not proposed dates yet. */
+  ScheduleNotSet: 'SCHEDULE_NOT_SET',
+  /** Dates proposed; the reviewer has not decided, so work cannot start. */
+  ScheduleAwaitingReview: 'SCHEDULE_AWAITING_REVIEW',
 } as const;
 export type ExceptionFlag = (typeof ExceptionFlag)[keyof typeof ExceptionFlag];
 export const EXCEPTION_FLAGS = Object.values(ExceptionFlag) as readonly ExceptionFlag[];
@@ -65,6 +93,8 @@ export const EXCEPTION_LABEL: Record<ExceptionFlag, string> = {
   NO_RECENT_UPDATE: 'No recent update',
   BLOCKED: 'Blocked',
   MISSING_DAILY_UPDATE: 'No daily outcome logged',
+  SCHEDULE_NOT_SET: 'Needs dates from its owner',
+  SCHEDULE_AWAITING_REVIEW: 'Dates awaiting review',
 };
 
 /** Kinds of entries in the task activity log. */
@@ -80,6 +110,10 @@ export const HistoryKind = {
   NextActionSet: 'next_action_set',
   EvidenceLinked: 'evidence_linked',
   DayOutcomeRecorded: 'day_outcome_recorded',
+  ScheduleProposed: 'schedule_proposed',
+  ScheduleApproved: 'schedule_approved',
+  ScheduleRejected: 'schedule_rejected',
+  EffortChanged: 'effort_changed',
   Reassigned: 'reassigned',
   CommentAdded: 'comment_added',
   DeadlineChangeRequested: 'deadline_change_requested',
@@ -118,6 +152,7 @@ export const ClarificationCode = {
   AmbiguousStatus: 'AMBIGUOUS_STATUS',
   UnclearOwner: 'UNCLEAR_OWNER',
   MissingReviewer: 'MISSING_REVIEWER',
+  MissingEffortDays: 'MISSING_EFFORT_DAYS',
   OwnershipTransfer: 'OWNERSHIP_TRANSFER',
   MissingMilestone: 'MISSING_MILESTONE',
   MissingDeliverable: 'MISSING_DELIVERABLE',
@@ -140,6 +175,7 @@ export const CLARIFICATION_LABEL: Record<ClarificationCode, string> = {
   AMBIGUOUS_STATUS: 'Source status could not be mapped',
   UNCLEAR_OWNER: 'Primary owner unclear',
   MISSING_REVIEWER: 'Needs a reviewer',
+  MISSING_EFFORT_DAYS: 'Needs an effort estimate',
   OWNERSHIP_TRANSFER: 'Ownership transfer noted in source',
   MISSING_MILESTONE: 'Not attached to a milestone',
   MISSING_DELIVERABLE: 'No deliverable identified',

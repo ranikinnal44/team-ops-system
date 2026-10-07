@@ -32,6 +32,7 @@ function liveTask(db: Database): string {
   const created = tasks.createTask(db, manager(db), {
     ...placement(db),
     title: 'Measure dock latch torque',
+    effortDays: 5,
     ownerId: employee1(db).id,
     reviewerId: employee3(db).id,
     supportingMemberIds: [employee2(db).id],
@@ -91,6 +92,7 @@ describe('when a daily outcome may be logged', () => {
     const created = tasks.createTask(db, manager(db), {
       ...placement(db),
       title: 'Not begun yet',
+      effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       startDate: today(),

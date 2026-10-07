@@ -28,6 +28,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Check dock latch torque',
+      effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P1',
@@ -55,6 +56,7 @@ describe('task creation', () => {
       tasks.createTask(db, manager(db), {
         ...placement,
         title: `Task ${n}`,
+        effortDays: 5,
         reviewerId: manager(db).id,
         ownerId: employee1(db).id,
         priority: 'P2',
@@ -75,6 +77,7 @@ describe('task creation', () => {
         tasks.createTask(db, employee1(db), {
           ...anyPlacement(db),
           title: 'Unauthorised',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -91,6 +94,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Backwards',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -122,22 +126,41 @@ describe('task creation', () => {
     }
   });
 
-  test('a task spanning more than three days is refused', () => {
+  test('a budget beyond the cap is refused', () => {
     assert.throws(
       () =>
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Too long to be one task',
+          effortDays: 6,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 3),
         }),
       (error: unknown) =>
         error instanceof AppError &&
         error.code === ErrorCode.VALIDATION &&
-        /span at most 3 days/.test(error.message),
+        /at most 5 working days/.test(error.message),
+    );
+  });
+
+  test('a window that spends more than the budget is refused', () => {
+    assert.throws(
+      () =>
+        tasks.createTask(db, manager(db), {
+          ...anyPlacement(db),
+          title: 'Two days of work spread over a fortnight',
+          effortDays: 1,
+          reviewerId: manager(db).id,
+          ownerId: employee1(db).id,
+          priority: 'P2',
+          startDate: today(),
+          dueDate: addDays(today(), 9),
+        }),
+      (error: unknown) =>
+        error instanceof AppError &&
+        error.code === ErrorCode.VALIDATION &&
+        /budgeted for 1/.test(error.message),
     );
   });
 
@@ -145,6 +168,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Right at the limit',
+      effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P2',
@@ -165,6 +189,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Two days, no plan',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -184,6 +209,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Second day unaccounted for',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -203,6 +229,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Whitespace is not a plan',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -223,6 +250,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Outcome for a day the task does not cover',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
@@ -243,6 +271,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'One day, one outcome \u2014 the task itself',
+      effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P2',
@@ -258,6 +287,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Ghost owner',
+          effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: 'no-such-user',
           priority: 'P2',
@@ -272,6 +302,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Logged on creation',
+      effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee2(db).id,
       priority: 'P0',
@@ -604,13 +635,13 @@ describe('deadline change requests', () => {
     assert.throws(
       () =>
         tasks.requestDeadlineChange(db, employee3(db), task.id, {
-          requestedDueDate: addDays(task.dueDate as string, 10),
-          reason: 'Needs a fortnight.',
+          requestedDueDate: addDays(task.dueDate as string, 20),
+          reason: 'Needs a month.',
         }),
       (error: unknown) =>
         error instanceof AppError &&
         error.code === ErrorCode.VALIDATION &&
-        /the limit is 3/.test(error.message),
+        /the cap is 5/.test(error.message),
     );
   });
 
@@ -632,7 +663,8 @@ describe('deadline change requests', () => {
     );
     assert.ok(gap && !gap.resolved, 'the two new days should be flagged, not invented');
 
-    // Defining them closes the gap.
+    // The dates are locked, but the outcomes owed for the new days are not:
+    // otherwise the extension would open a gap with no way to close it.
     tasks.updateTask(db, manager(db), task.id, {
       dayPlans: [
         { date: stretched.startDate as string, outcome: 'Schema mapped.' },

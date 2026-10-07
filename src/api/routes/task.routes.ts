@@ -42,6 +42,17 @@ const dayLogSchema = object({
   blocker: optional(nullable(str({ max: 2000 }))),
 });
 
+const proposeScheduleSchema = object({
+  startDate: isoDate(),
+  dueDate: isoDate(),
+  dayPlans: optional(arrayOf(dayPlanSchema)),
+});
+
+const scheduleDecisionSchema = object({
+  approve: bool(),
+  note: optional(nullable(str({ max: 2000 }))),
+});
+
 const createSchema = object({
   workstreamId: str({ max: 64 }),
   milestoneId: optional(nullable(str({ max: 64 }))),
@@ -60,8 +71,10 @@ const createSchema = object({
   priority: optional(nullable(oneOf(PRIORITIES))),
   // Required, unlike every other scheduling field: work with no agreed start
   // and end cannot be chased, so it is refused at the door.
-  startDate: isoDate(),
-  dueDate: isoDate(),
+  // The manager budgets effort; the owner proposes the dates that spend it.
+  effortDays: int({ min: 1, max: 365 }),
+  startDate: optional(isoDate()),
+  dueDate: optional(isoDate()),
   // Required by the service once the task covers more than one day.
   dayPlans: optional(arrayOf(dayPlanSchema, { max: 31 })),
   dependencyTaskIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),
@@ -211,6 +224,18 @@ export const taskRoutes: Route[] = [
       tasks.addComment(db, actor, params.id as string, parseOrThrow(commentSchema, body).body),
   },
   {
+    method: 'POST',
+    path: '/api/tasks/:id/schedule',
+    handler: ({ db, actor, params, body }) =>
+      tasks.proposeSchedule(db, actor, params.id as string, parseOrThrow(proposeScheduleSchema, body)),
+  },
+  {
+    method: 'POST',
+    path: '/api/tasks/:id/schedule/decision',
+    handler: ({ db, actor, params, body }) =>
+      tasks.decideSchedule(db, actor, params.id as string, parseOrThrow(scheduleDecisionSchema, body)),
+  },
+  {
     method: 'GET',
     path: '/api/tasks/:id/day-logs',
     handler: ({ db, actor, params }) => tasks.listDayLogs(db, actor, params.id as string),
@@ -272,7 +297,7 @@ export const taskRoutes: Route[] = [
     path: '/api/meta/rules',
     auth: false,
     handler: () => ({
-      maxTaskSpanDays: config.rules.maxTaskSpanDays,
+      maxTaskEffortDays: config.rules.maxTaskEffortDays,
       dueSoonDays: config.rules.dueSoonDays,
       noUpdateWorkingDays: config.rules.noUpdateWorkingDays,
       dailyUpdateWorkingDays: config.rules.dailyUpdateWorkingDays,

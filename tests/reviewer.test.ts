@@ -29,6 +29,7 @@ const newTask = (db: Database, over: Record<string, unknown> = {}): ReturnType<t
   tasks.createTask(db, manager(db), {
     ...placement(db),
     title: 'Latch torque check',
+    effortDays: 5,
     ownerId: employee1(db).id,
     reviewerId: employee2(db).id,
     startDate: today(),
