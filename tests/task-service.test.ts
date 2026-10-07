@@ -16,9 +16,9 @@ beforeEach(() => {
 const today = (): string => todayDate();
 
 function anyPlacement(d: Database): { workstreamId: string; milestoneId: string } {
-  const [workstream] = projects.listWorkstreams(d);
+  const [workstream] = projects.listWorkstreams(d, manager(d));
   assert.ok(workstream);
-  const [milestone] = projects.listMilestones(d, workstream.id);
+  const [milestone] = projects.listMilestones(d, manager(d), workstream.id);
   assert.ok(milestone);
   return { workstreamId: workstream.id, milestoneId: milestone.id };
 }

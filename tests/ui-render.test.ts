@@ -668,16 +668,30 @@ describe('views render against real AutoDock data', () => {
     assert.match(linked.text(), new RegExp(milestones[0].name));
   });
 
-  test('an employee sees the whole plan but only their own tasks under it', async () => {
+  test('an employee sees only the workstreams they hold work in', async () => {
+    await signIn('rani@example.com');
+    const managerNode = mount();
+    await views.milestones.milestonesView(managerNode, new URLSearchParams());
+    assert.match(
+      managerNode.text(),
+      /Final Design Validation/,
+      'the manager still sees the whole plan',
+    );
+
     await signIn('faizan@example.com');
     const node = mount();
     await views.milestones.milestonesView(node, new URLSearchParams());
     const text = node.text();
-    assert.match(text, /Final Design Validation/, 'the plan stays visible in full');
+    assert.match(text, /Robot Stack Simulation/, 'their own workstreams stay visible');
+    assert.doesNotMatch(
+      text,
+      /Final Design Validation/,
+      'a workstream they have no part in is not advertised to them',
+    );
     assert.doesNotMatch(
       text,
       /No tasks have been recorded against this milestone yet/,
-      'an employee must not be told the milestone is empty when it is only hidden',
+      'nothing an employee can see is an empty shell of work they cannot',
     );
   });
 

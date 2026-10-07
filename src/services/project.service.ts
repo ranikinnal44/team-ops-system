@@ -9,7 +9,14 @@ import * as taskRepo from '../repositories/task.repo.ts';
 import * as userRepo from '../repositories/user.repo.ts';
 import type { Actor, Project, Workstream, Milestone, Deliverable, TaskView } from '../domain/types.ts';
 import { Role, TaskStatus } from '../domain/enums.ts';
-import { Capability, assertCan } from '../domain/permissions.ts';
+import {
+  Capability,
+  assertCan,
+  scopeForRole,
+  canViewWorkstream,
+  assertCanViewWorkstream,
+  type WorkstreamScope,
+} from '../domain/permissions.ts';
 import { suggestCode } from '../lib/ids.ts';
 import { conflict, notFound, validationError } from '../lib/errors.ts';
 import { todayDate, type IsoDate } from '../lib/dates.ts';
@@ -87,13 +94,51 @@ export function createDeliverable(
   return repo.createDeliverable(db, input);
 }
 
-export const listProjects = (db: Database): Project[] => repo.listProjects(db);
-export const listWorkstreams = (db: Database, projectId?: string): Workstream[] =>
-  repo.listWorkstreams(db, projectId);
-export const listMilestones = (db: Database, workstreamId?: string): Milestone[] =>
-  repo.listMilestones(db, workstreamId);
-export const listDeliverables = (db: Database, milestoneId?: string): Deliverable[] =>
-  repo.listDeliverables(db, milestoneId);
+/**
+ * The workstreams this actor may see, resolved once per request.
+ *
+ * A manager gets the whole plan. An employee gets the workstreams they hold
+ * work in, so the structure they can browse matches the tasks they can open
+ * rather than advertising a plan they have no part in.
+ */
+export function workstreamScopeFor(db: Database, actor: Actor): WorkstreamScope {
+  return scopeForRole(actor.role, taskRepo.listParticipantWorkstreamIds(db, actor.id));
+}
+
+/** Projects with at least one workstream the actor can see. */
+export function listProjects(db: Database, actor: Actor): Project[] {
+  const scope = workstreamScopeFor(db, actor);
+  if (scope.kind === 'all') return repo.listProjects(db);
+  const visibleProjects = new Set(
+    repo.listWorkstreams(db).filter((w) => canViewWorkstream(scope, w.id)).map((w) => w.projectId),
+  );
+  return repo.listProjects(db).filter((p) => visibleProjects.has(p.id));
+}
+
+export function listWorkstreams(db: Database, actor: Actor, projectId?: string): Workstream[] {
+  const scope = workstreamScopeFor(db, actor);
+  return repo.listWorkstreams(db, projectId).filter((w) => canViewWorkstream(scope, w.id));
+}
+
+export function listMilestones(db: Database, actor: Actor, workstreamId?: string): Milestone[] {
+  const scope = workstreamScopeFor(db, actor);
+  if (workstreamId !== undefined) assertCanViewWorkstream(scope, workstreamId);
+  return repo
+    .listMilestones(db, workstreamId)
+    .filter((m) => canViewWorkstream(scope, m.workstreamId));
+}
+
+export function listDeliverables(db: Database, actor: Actor, milestoneId?: string): Deliverable[] {
+  const scope = workstreamScopeFor(db, actor);
+  if (scope.kind === 'all') return repo.listDeliverables(db, milestoneId);
+  // A deliverable reaches its workstream through its milestone, so resolve
+  // that mapping once rather than looking it up per row.
+  const visibleMilestones = new Set(
+    repo.listMilestones(db).filter((m) => canViewWorkstream(scope, m.workstreamId)).map((m) => m.id),
+  );
+  if (milestoneId !== undefined && !visibleMilestones.has(milestoneId)) throw notFound('Milestone');
+  return repo.listDeliverables(db, milestoneId).filter((d) => visibleMilestones.has(d.milestoneId));
+}
 
 /**
  * The whole tree for one project, with per-node task roll-ups. Backs the
@@ -151,11 +196,19 @@ export function getProjectTree(
   const project = repo.findProjectById(db, projectId) ?? repo.findProjectByCode(db, projectId);
   if (!project) throw notFound('Project');
 
-  // Employees see the structure in full but only the tasks they are part of.
-  const scope = actor.role === Role.Manager ? {} : { participantId: actor.id };
+  // Employees see only the workstreams they hold work in, and only their own
+  // tasks inside them. A project they have no part in is reported as missing
+  // rather than as an empty shell, which would still confirm it exists.
+  const scope = workstreamScopeFor(db, actor);
+  const visibleWorkstreams = repo
+    .listWorkstreams(db, project.id)
+    .filter((w) => canViewWorkstream(scope, w.id));
+  if (visibleWorkstreams.length === 0 && scope.kind === 'some') throw notFound('Project');
+
+  const taskScope = actor.role === Role.Manager ? {} : { participantId: actor.id };
   const tasks = toTaskViews(
     db,
-    taskRepo.listTasks(db, { projectId: project.id, ...scope }),
+    taskRepo.listTasks(db, { projectId: project.id, ...taskScope }),
     todayDate(now),
   );
   const byMilestone = new Map<string, TaskView[]>();
@@ -176,7 +229,7 @@ export function getProjectTree(
 
   const byAttention = (a: TaskView, b: TaskView): number => b.attentionScore - a.attentionScore;
 
-  const workstreams = repo.listWorkstreams(db, project.id).map((workstream) => {
+  const workstreams = visibleWorkstreams.map((workstream) => {
     const milestones = repo.listMilestones(db, workstream.id).map((milestone) => {
       const milestoneTasks = byMilestone.get(milestone.id) ?? [];
       return {

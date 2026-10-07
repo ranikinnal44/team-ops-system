@@ -232,7 +232,7 @@ describe('structure can be corrected, not just created', () => {
 
   test('an empty milestone can be deleted', () => {
     projects.deleteMilestone(db, manager, milestoneId);
-    assert.equal(projects.listMilestones(db, workstreamId).length, 0);
+    assert.equal(projects.listMilestones(db, manager, workstreamId).length, 0);
   });
 
   test('deleting refuses while tasks hang off it, rather than taking them too', () => {

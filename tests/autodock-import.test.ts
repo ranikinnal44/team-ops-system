@@ -56,7 +56,7 @@ describe('dataset isolation', () => {
   });
 
   test('exactly one project, named AutoDock', () => {
-    const all = projects.listProjects(db);
+    const all = projects.listProjects(db, manager());
     assert.equal(all.length, 1);
     assert.equal(all[0]?.name, 'AutoDock');
     assert.equal(all[0]?.code, 'AD');
@@ -483,7 +483,7 @@ describe('deadline rules against undated work', () => {
 
 describe('structure', () => {
   test('the three build timeline phases exist as workstreams', () => {
-    const codes = projects.listWorkstreams(db).map((w) => w.code);
+    const codes = projects.listWorkstreams(db, manager()).map((w) => w.code);
     for (const phase of BUILD_TIMELINE.phases) {
       assert.ok(codes.includes(phase.code), `missing phase ${phase.code}`);
     }
@@ -491,7 +491,7 @@ describe('structure', () => {
 
   test('the ten inferred log workstreams are still present and marked as inferred', () => {
     const inferred = projects
-      .listWorkstreams(db)
+      .listWorkstreams(db, manager())
       .filter((w) => !BUILD_TIMELINE.phases.some((p) => p.code === w.code));
     assert.equal(inferred.length, 10);
     assert.ok(inferred.every((w) => /inferred/i.test(w.description ?? '')));
@@ -501,8 +501,8 @@ describe('structure', () => {
     const planned = BUILD_TIMELINE.phases.flatMap((p) => p.milestones);
     for (const source of planned) {
       const stored = projects
-        .listWorkstreams(db)
-        .flatMap((w) => projects.listMilestones(db, w.id))
+        .listWorkstreams(db, manager())
+        .flatMap((w) => projects.listMilestones(db, manager(), w.id))
         .find((m) => m.name === source.name);
       assert.ok(stored, `missing milestone ${source.name}`);
       assert.equal(stored.timelineLabel, source.timelineLabel);
@@ -513,8 +513,8 @@ describe('structure', () => {
 
   test('long lead items are kept on the milestone, not as task dependencies', () => {
     const withItems = projects
-      .listWorkstreams(db)
-      .flatMap((w) => projects.listMilestones(db, w.id))
+      .listWorkstreams(db, manager())
+      .flatMap((w) => projects.listMilestones(db, manager(), w.id))
       .filter((m) => m.longLeadItems.length > 0);
     assert.equal(
       withItems.reduce((sum, m) => sum + m.longLeadItems.length, 0),
@@ -528,9 +528,9 @@ describe('structure', () => {
 
   test('outcomes became deliverables, dated only where the plan dates them', () => {
     const all = projects
-      .listWorkstreams(db)
-      .flatMap((w) => projects.listMilestones(db, w.id))
-      .flatMap((m) => projects.listDeliverables(db, m.id));
+      .listWorkstreams(db, manager())
+      .flatMap((w) => projects.listMilestones(db, manager(), w.id))
+      .flatMap((m) => projects.listDeliverables(db, manager(), m.id));
     const planned = all.filter((d) => d.sourceRef?.includes('-o'));
     assert.equal(planned.length, 13);
     // Every deliverable is dated, because a dateless outcome cannot be stored.
@@ -548,7 +548,7 @@ describe('structure', () => {
   });
 
   test('tasks with no milestone stay visible in the project view', () => {
-    const [project] = projects.listProjects(db);
+    const [project] = projects.listProjects(db, manager());
     assert.ok(project);
     const tree = projects.getProjectTree(db, manager(), project.id);
     const shown =
@@ -558,8 +558,8 @@ describe('structure', () => {
   });
 
   test('every milestone records where it came from', () => {
-    for (const workstream of projects.listWorkstreams(db)) {
-      for (const milestone of projects.listMilestones(db, workstream.id)) {
+    for (const workstream of projects.listWorkstreams(db, manager())) {
+      for (const milestone of projects.listMilestones(db, manager(), workstream.id)) {
         assert.match(
           milestone.description ?? '',
           /(Derived during import:|From the build timeline)/,
@@ -571,8 +571,8 @@ describe('structure', () => {
 
   test('each milestone groups at least two tasks', () => {
     const all = taskRepo.listTasks(db);
-    for (const workstream of projects.listWorkstreams(db)) {
-      for (const milestone of projects.listMilestones(db, workstream.id)) {
+    for (const workstream of projects.listWorkstreams(db, manager())) {
+      for (const milestone of projects.listMilestones(db, manager(), workstream.id)) {
         const count = all.filter((t) => t.milestoneId === milestone.id).length;
         assert.ok(count >= 2, `${milestone.name} groups only ${count} task(s)`);
       }
@@ -626,6 +626,7 @@ describe('visibility with real data', () => {
 
 describe('the live project holds the Stream 1 plan only', () => {
   let live: Database;
+  const liveManager = (): ReturnType<typeof actorByEmail> => actorByEmail(live, 'rani@example.com');
   before(() => {
     live = autoDockDb();
   });
@@ -638,7 +639,7 @@ describe('the live project holds the Stream 1 plan only', () => {
   });
 
   test('only the three build timeline phases exist', () => {
-    const workstreams = projects.listWorkstreams(live);
+    const workstreams = projects.listWorkstreams(live, liveManager());
     assert.deepEqual(
       workstreams.map((w) => w.code).sort(),
       ['AMP', 'MDS', 'WTS'],
@@ -646,7 +647,7 @@ describe('the live project holds the Stream 1 plan only', () => {
   });
 
   test('the inferred log workstreams are gone, not left empty', () => {
-    const names = projects.listWorkstreams(live).map((w) => w.name);
+    const names = projects.listWorkstreams(live, liveManager()).map((w) => w.name);
     for (const inferred of ['Procurement & Vendors', 'Conveyor & Dock Integration', 'Simulation']) {
       assert.ok(!names.includes(inferred), `${inferred} was only ever a log classification`);
     }
@@ -659,8 +660,8 @@ describe('the live project holds the Stream 1 plan only', () => {
 
   test('nothing is orphaned by dropping the log', () => {
     const milestones = projects
-      .listWorkstreams(live)
-      .flatMap((w) => projects.listMilestones(live, w.id));
+      .listWorkstreams(live, liveManager())
+      .flatMap((w) => projects.listMilestones(live, liveManager(), w.id));
     assert.equal(milestones.length, 8);
     const all = taskRepo.listTasks(live);
     for (const milestone of milestones) {
@@ -669,7 +670,7 @@ describe('the live project holds the Stream 1 plan only', () => {
         `${milestone.name} has no tasks`,
       );
     }
-    const deliverables = milestones.flatMap((m) => projects.listDeliverables(live, m.id));
+    const deliverables = milestones.flatMap((m) => projects.listDeliverables(live, liveManager(), m.id));
     assert.equal(deliverables.length, 13);
   });
 

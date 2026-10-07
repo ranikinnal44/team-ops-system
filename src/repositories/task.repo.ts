@@ -551,3 +551,20 @@ export function countTasksByOwner(db: Database): Map<string, number> {
     .all() as { owner_id: string; total: number }[];
   return new Map(rows.map((r) => [r.owner_id, r.total]));
 }
+
+/**
+ * Distinct workstreams the user holds work in, as owner, reviewer or
+ * supporting member. Backs an employee's visible slice of the plan.
+ */
+export function listParticipantWorkstreamIds(db: Database, userId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT t.workstream_id AS id
+         FROM tasks t
+        WHERE t.owner_id = ?
+           OR t.reviewer_id = ?
+           OR EXISTS (SELECT 1 FROM task_supporters s WHERE s.task_id = t.id AND s.user_id = ?)`,
+    )
+    .all(userId, userId, userId) as { id: string }[];
+  return rows.map((row) => row.id);
+}

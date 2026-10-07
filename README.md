@@ -350,7 +350,8 @@ value is hard-coded in source; `.env` is git-ignored.
 2. Check the **Requires clarification** card → each reason drills into **Tasks**, where the
    affected rows carry an accent edge and a *Gaps* count. Open one to fill the gap in.
 3. Sign out, sign in as **Faizan** → *My work*, most urgent first. The team-wide
-   tasks are gone; only their own are visible.
+   tasks are gone; only their own are visible, and the **Plan** narrows to the
+   workstreams they actually hold work in — the rest of the project is not listed at all.
 4. Open a task, change the status, add a blocker, save → the change appears in the activity
    history and on the manager's exception list.
 5. Try to change the due date as an employee → refused, pointing at the deadline-request flow.

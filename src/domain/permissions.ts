@@ -9,7 +9,7 @@
  * the rules are testable in isolation and visible in one place.
  */
 import { Role } from './enums.ts';
-import { forbidden } from '../lib/errors.ts';
+import { forbidden, notFound } from '../lib/errors.ts';
 
 export const Capability = {
   CreateProject: 'project:create',
@@ -159,4 +159,42 @@ export function assertCanUpdateTask(role: Role, task: TaskParticipants, userId: 
   if (!canUpdateTask(role, task, userId)) {
     throw forbidden('Only the task owner, its reviewer or a manager can update this task.');
   }
+}
+
+/**
+ * Which workstreams an actor may see.
+ *
+ * A manager sees the whole plan. An employee sees only the workstreams they
+ * hold work in — the structure around someone else's workstream is as
+ * invisible to them as the tasks inside it.
+ *
+ * Kept as a value rather than a predicate over the database so this stays pure
+ * and the caller resolves the ids once per request instead of per node.
+ */
+export type WorkstreamScope =
+  /** Every workstream, present and future. */
+  | { readonly kind: 'all' }
+  /** Exactly these ids and no others. */
+  | { readonly kind: 'some'; readonly ids: ReadonlySet<string> };
+
+export const ALL_WORKSTREAMS: WorkstreamScope = { kind: 'all' };
+
+export const workstreamScope = (ids: Iterable<string>): WorkstreamScope => ({
+  kind: 'some',
+  ids: new Set(ids),
+});
+
+/** The scope a role implies, given the workstreams the user participates in. */
+export const scopeForRole = (role: Role, participantWorkstreamIds: Iterable<string>): WorkstreamScope =>
+  role === Role.Manager ? ALL_WORKSTREAMS : workstreamScope(participantWorkstreamIds);
+
+export const canViewWorkstream = (scope: WorkstreamScope, workstreamId: string): boolean =>
+  scope.kind === 'all' || scope.ids.has(workstreamId);
+
+/**
+ * Refuses as "not found" rather than "forbidden" on purpose: an employee has
+ * no business learning that a workstream they cannot see exists at all.
+ */
+export function assertCanViewWorkstream(scope: WorkstreamScope, workstreamId: string): void {
+  if (!canViewWorkstream(scope, workstreamId)) throw notFound('Workstream');
 }

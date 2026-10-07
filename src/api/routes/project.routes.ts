@@ -84,7 +84,7 @@ export const projectRoutes: Route[] = [
   {
     method: 'GET',
     path: '/api/projects',
-    handler: ({ db }) => projects.listProjects(db),
+    handler: ({ db, actor }) => projects.listProjects(db, actor),
   },
   {
     method: 'POST',
@@ -114,7 +114,8 @@ export const projectRoutes: Route[] = [
   {
     method: 'GET',
     path: '/api/workstreams',
-    handler: ({ db, query }) => projects.listWorkstreams(db, query.get('projectId') ?? undefined),
+    handler: ({ db, actor, query }) =>
+      projects.listWorkstreams(db, actor, query.get('projectId') ?? undefined),
   },
   {
     method: 'POST',
@@ -140,7 +141,8 @@ export const projectRoutes: Route[] = [
   {
     method: 'GET',
     path: '/api/milestones',
-    handler: ({ db, query }) => projects.listMilestones(db, query.get('workstreamId') ?? undefined),
+    handler: ({ db, actor, query }) =>
+      projects.listMilestones(db, actor, query.get('workstreamId') ?? undefined),
   },
   {
     method: 'POST',
@@ -166,7 +168,8 @@ export const projectRoutes: Route[] = [
   {
     method: 'GET',
     path: '/api/deliverables',
-    handler: ({ db, query }) => projects.listDeliverables(db, query.get('milestoneId') ?? undefined),
+    handler: ({ db, actor, query }) =>
+      projects.listDeliverables(db, actor, query.get('milestoneId') ?? undefined),
   },
   {
     method: 'POST',

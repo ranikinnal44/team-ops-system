@@ -412,3 +412,44 @@ describe('dates are mandatory at the API boundary', () => {
     assert.ok(pathsOf(body).includes('startDate'));
   });
 });
+
+describe('the hierarchy endpoints are scoped to the caller', () => {
+  test('an employee gets fewer workstreams than the manager', async () => {
+    const asManager = await server.request('GET', '/api/workstreams', { token: managerToken });
+    const asEmployee = await server.request('GET', '/api/workstreams', { token: employeeToken });
+    assert.equal(asManager.status, 200);
+    assert.equal(asEmployee.status, 200);
+    assert.ok(asManager.body.length > 0, 'fixture sanity');
+    assert.ok(
+      asEmployee.body.length < asManager.body.length,
+      'the route must pass the actor through, not list the whole plan',
+    );
+    const visible = new Set(asEmployee.body.map((w: { id: string }) => w.id));
+    assert.ok([...visible].every((id) => asManager.body.some((w: { id: string }) => w.id === id)));
+  });
+
+  test('milestones and deliverables are scoped the same way', async () => {
+    for (const path of ['/api/milestones', '/api/deliverables']) {
+      const asManager = await server.request('GET', path, { token: managerToken });
+      const asEmployee = await server.request('GET', path, { token: employeeToken });
+      assert.ok(
+        asEmployee.body.length <= asManager.body.length,
+        `${path} must not show an employee more than the manager`,
+      );
+    }
+  });
+
+  test('a workstream the employee has no part in is 404, not an empty list', async () => {
+    const all = await server.request('GET', '/api/workstreams', { token: managerToken });
+    const mine = await server.request('GET', '/api/workstreams', { token: employeeToken });
+    const mineIds = new Set(mine.body.map((w: { id: string }) => w.id));
+    const foreign = all.body.find((w: { id: string }) => !mineIds.has(w.id));
+    assert.ok(foreign, 'fixture sanity: expected a workstream this employee is not on');
+    const { status } = await server.request(
+      `GET`,
+      `/api/milestones?workstreamId=${foreign.id}`,
+      { token: employeeToken },
+    );
+    assert.equal(status, 404, 'an empty 200 would still confirm the workstream exists');
+  });
+});
