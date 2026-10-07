@@ -10,6 +10,7 @@ import type { Database } from '../db/connection.ts';
 import { compile, matchRoute, readJsonBody, sendJson, sendError, bearerToken } from './http.ts';
 import type { Route, RequestContext } from './http.ts';
 import { authenticate } from '../services/auth.service.ts';
+import { assertCan } from '../domain/permissions.ts';
 import { AppError, ErrorCode } from '../lib/errors.ts';
 import { PROJECT_ROOT } from '../config/index.ts';
 import { authRoutes } from './routes/auth.routes.ts';
@@ -95,10 +96,13 @@ export async function handleRequest(
     }
 
     const { route, params } = match;
-    const body = await readJsonBody(req);
     const actor = route.auth === false
       ? { id: '', name: 'anonymous', role: 'employee' as const }
       : authenticate(db, bearerToken(req));
+    // Before the body, so "you may not do this" is never reported as "your
+    // payload is wrong". The service checks it again and stays authoritative.
+    if (route.capability !== undefined) assertCan(actor.role, route.capability);
+    const body = await readJsonBody(req);
 
     const ctx: RequestContext = { db, req, res, params, query: url.searchParams, body, actor };
     const result = await route.handler(ctx);

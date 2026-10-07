@@ -20,6 +20,7 @@ import { MAX_DAY_OUTCOME_LENGTH } from '../../domain/task-schedule.ts';
 import { MAX_DAY_LOG_OUTCOME_LENGTH } from '../../services/task.service.ts';
 import { TRANSITIONS } from '../../domain/status-machine.ts';
 import { config } from '../../config/index.ts';
+import { Capability } from '../../domain/permissions.ts';
 
 /**
  * One calendar day of a multi-day task and what it is meant to produce. The
@@ -51,7 +52,9 @@ const createSchema = object({
   // the work, and an unassigned task says so rather than being parked on
   // whoever happened to create it. The Tasks screen assigns them in bulk.
   ownerId: optional(nullable(str({ max: 64 }))),
-  reviewerId: optional(nullable(str({ max: 64 }))),
+  // Required at creation: work is signed off by someone other than whoever
+  // did it, so a task with no reviewer could never reach Completed.
+  reviewerId: str({ max: 64 }),
   supportingMemberIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),
   // Omitted or null means "not assigned yet" rather than a guessed default.
   priority: optional(nullable(oneOf(PRIORITIES))),
@@ -165,6 +168,7 @@ export const taskRoutes: Route[] = [
     method: 'POST',
     path: '/api/tasks',
     status: 201,
+    capability: Capability.CreateTask,
     handler: ({ db, actor, body }) => tasks.createTask(db, actor, parseOrThrow(createSchema, body)),
   },
   {

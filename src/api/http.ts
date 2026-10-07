@@ -24,12 +24,24 @@ export type RequestContext = {
 
 export type Handler = (ctx: RequestContext) => Promise<unknown> | unknown;
 
+import type { Capability } from '../domain/permissions.ts';
+
 export type Route = {
   readonly method: HttpMethod;
   readonly path: string;
   readonly handler: Handler;
   /** Defaults to true; set false for login and health. */
   readonly auth?: boolean;
+  /**
+   * Checked before the request body is parsed.
+   *
+   * The service that does the work still enforces this and remains the
+   * authority; declaring it here only fixes the ORDER. Without it a caller who
+   * may not use the endpoint at all first has to satisfy its schema, and gets
+   * told their payload is wrong when the honest answer is that the endpoint is
+   * not theirs to call.
+   */
+  readonly capability?: Capability;
   /** Status code for a successful response. Defaults to 200. */
   readonly status?: number;
 };

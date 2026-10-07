@@ -34,7 +34,12 @@ import {
   ClarificationCode,
   type ExceptionFlag,
 } from '../domain/enums.ts';
-import { assertTransition, progressForStatus, allowedTransitions } from '../domain/status-machine.ts';
+import {
+  assertTransition,
+  progressForStatus,
+  allowedTransitions,
+  type TransitionActor,
+} from '../domain/status-machine.ts';
 import {
   Capability,
   assertCan,
@@ -66,6 +71,19 @@ const thresholds = (): RuleThresholds => ({
   dueSoonDays: config.rules.dueSoonDays,
   noUpdateWorkingDays: config.rules.noUpdateWorkingDays,
   dailyUpdateWorkingDays: config.rules.dailyUpdateWorkingDays,
+});
+
+/**
+ * The actor's relationship to one task, as the status machine needs it.
+ * Derived here so no caller has to remember what counts as "the reviewer".
+ */
+const transitionActor = (
+  task: { ownerId: string | null; reviewerId: string | null },
+  actor: Actor,
+): TransitionActor => ({
+  role: actor.role,
+  isOwner: task.ownerId !== null && task.ownerId === actor.id,
+  isReviewer: task.reviewerId !== null && task.reviewerId === actor.id,
 });
 
 /** Longest span a task may cover, in inclusive calendar days. */
@@ -164,7 +182,11 @@ export type CreateTaskInput = {
   description?: string | null;
   /** Omit to leave the task unassigned rather than guessing an owner. */
   ownerId?: string | null;
-  reviewerId?: string | null;
+  /**
+   * Required. Work is signed off by someone other than the person who did it,
+   * so a task with no reviewer has no way to reach Completed at all.
+   */
+  reviewerId: string;
   supportingMemberIds?: readonly string[];
   /** Omit to leave the priority unassigned rather than guessing one. */
   priority?: Priority | null;
@@ -210,7 +232,18 @@ export function createTask(
   }
 
   if (input.ownerId) assertActiveUser(db, input.ownerId, 'ownerId', 'Owner');
-  if (input.reviewerId) assertActiveUser(db, input.reviewerId, 'reviewerId', 'Reviewer');
+  if (!input.reviewerId) {
+    throw validationError('A task needs a reviewer', [
+      { path: 'reviewerId', message: 'is required — somebody has to sign this off' },
+    ]);
+  }
+  assertActiveUser(db, input.reviewerId, 'reviewerId', 'Reviewer');
+  // Nobody reviews their own work; that is the whole point of the gate.
+  if (input.ownerId && input.ownerId === input.reviewerId) {
+    throw validationError('The reviewer cannot be the owner', [
+      { path: 'reviewerId', message: 'must be somebody other than the task owner' },
+    ]);
+  }
   for (const id of input.supportingMemberIds ?? []) {
     assertActiveUser(db, id, 'supportingMemberIds', 'Supporting member');
   }
@@ -418,7 +451,15 @@ export function updateTask(
   // --- status -------------------------------------------------------------
   let nextStatus = task.status;
   if (fields.status !== undefined && fields.status !== task.status) {
-    assertTransition(task.status, fields.status, actor.role);
+    assertTransition(task.status, fields.status, transitionActor(task, actor));
+    // Applying for review needs somebody to apply TO. Imported work predates
+    // the rule, so this is caught here rather than at the door.
+    if (fields.status === TaskStatus.Review && task.reviewerId === null) {
+      throw conflict(
+        'This task has no reviewer, so there is nobody to send it to. ' +
+          'A manager must assign one before it can go to review.',
+      );
+    }
     nextStatus = fields.status;
     patch.status = nextStatus;
     record({
@@ -802,8 +843,11 @@ export function bulkAssign(
 }
 
 /** Statuses this actor may move the task to right now — drives the UI dropdown. */
-export function availableTransitions(task: { status: TaskStatus }, actor: Actor): TaskStatus[] {
-  return [...allowedTransitions(task.status, actor.role)];
+export function availableTransitions(
+  task: { status: TaskStatus; ownerId: string | null; reviewerId: string | null },
+  actor: Actor,
+): TaskStatus[] {
+  return [...allowedTransitions(task.status, transitionActor(task, actor))];
 }
 
 // --- comments & history ---------------------------------------------------

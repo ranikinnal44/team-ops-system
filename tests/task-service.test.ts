@@ -28,6 +28,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Check dock latch torque',
+      reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P1',
       startDate: today(),
@@ -54,6 +55,7 @@ describe('task creation', () => {
       tasks.createTask(db, manager(db), {
         ...placement,
         title: `Task ${n}`,
+        reviewerId: manager(db).id,
         ownerId: employee1(db).id,
         priority: 'P2',
         startDate: today(),
@@ -73,6 +75,7 @@ describe('task creation', () => {
         tasks.createTask(db, employee1(db), {
           ...anyPlacement(db),
           title: 'Unauthorised',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -88,6 +91,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Backwards',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: addDays(today(), 5),
@@ -124,6 +128,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Too long to be one task',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -140,6 +145,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Right at the limit',
+      reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P2',
       startDate: today(),
@@ -159,6 +165,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Two days, no plan',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -177,6 +184,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Second day unaccounted for',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -195,6 +203,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Whitespace is not a plan',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -214,6 +223,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Outcome for a day the task does not cover',
+          reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
@@ -233,6 +243,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'One day, one outcome \u2014 the task itself',
+      reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P2',
       startDate: today(),
@@ -247,6 +258,7 @@ describe('task creation', () => {
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
           title: 'Ghost owner',
+          reviewerId: manager(db).id,
           ownerId: 'no-such-user',
           priority: 'P2',
           startDate: today(),
@@ -260,6 +272,7 @@ describe('task creation', () => {
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Logged on creation',
+      reviewerId: manager(db).id,
       ownerId: employee2(db).id,
       priority: 'P0',
       startDate: today(),

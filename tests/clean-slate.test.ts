@@ -113,6 +113,7 @@ describe('building a project from nothing', () => {
       workstreamId: workstream.id,
       milestoneId: milestone.id,
       title: 'Proto ready design',
+      reviewerId: manager.id,
       startDate: '2026-10-12',
       dueDate: '2026-10-12',
     });
@@ -131,6 +132,7 @@ describe('building a project from nothing', () => {
     const task = tasks.createTask(db, manager, {
       workstreamId: workstream.id,
       title: 'Unowned for now',
+      reviewerId: manager.id,
       startDate: '2026-10-12',
       dueDate: '2026-10-12',
     });
@@ -240,6 +242,7 @@ describe('structure can be corrected, not just created', () => {
       workstreamId,
       milestoneId,
       title: 'Something real',
+      reviewerId: manager.id,
       startDate: '2026-10-12',
       dueDate: '2026-10-12',
     });
@@ -259,6 +262,7 @@ describe('structure can be corrected, not just created', () => {
       workstreamId,
       milestoneId,
       title: 'Something real',
+      reviewerId: manager.id,
       startDate: '2026-10-12',
       dueDate: '2026-10-12',
     });

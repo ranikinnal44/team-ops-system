@@ -8,12 +8,14 @@ let db: Database;
 let server: TestServer;
 let managerToken: string;
 let employeeToken: string;
+let reviewerToken: string;
 
 before(async () => {
   db = freshDb();
   server = await startTestServer(db);
   managerToken = await loginAs(server, 'demo.manager@example.com');
   employeeToken = await loginAs(server, 'demo.employee1@example.com');
+  reviewerToken = await loginAs(server, 'demo.employee2@example.com');
 });
 
 after(async () => {
@@ -154,6 +156,7 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
     );
     const users = await server.request('GET', '/api/users', { token: managerToken });
     const employee = users.body.find((u: { email: string }) => u.email === 'demo.employee1@example.com');
+    const reviewer = users.body.find((u: { email: string }) => u.email === 'demo.employee2@example.com');
 
     const created = await server.request('POST', '/api/tasks', {
       token: managerToken,
@@ -163,6 +166,7 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
         title: 'End-to-end flow task',
         description: 'Created by the API test.',
         ownerId: employee.id,
+        reviewerId: reviewer.id,
         priority: 'P1',
         startDate: todayDate(),
         dueDate: addDays(todayDate(), 2),
@@ -217,8 +221,24 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
       token: employeeToken,
       body: { status: 'review', progress: 95, evidenceUrl: 'https://example.com/demo/evidence' },
     });
+
+    // The owner cannot sign off their own work, nor withdraw it from review
+    // and walk it to Completed the long way round.
+    const selfComplete = await server.request('PATCH', `/api/tasks/${taskId}`, {
+      token: employeeToken,
+      body: { status: 'completed' },
+    });
+    assert.equal(selfComplete.status, 422, 'the owner must not be able to complete their own task');
+    assert.match(selfComplete.body.error.message, /reviewer/i);
+    const selfWithdraw = await server.request('PATCH', `/api/tasks/${taskId}`, {
+      token: employeeToken,
+      body: { status: 'in_progress' },
+    });
+    assert.equal(selfWithdraw.status, 422, 'nor withdraw from review to get there another way');
+
+    // The assigned reviewer can.
     const completed = await server.request('PATCH', `/api/tasks/${taskId}`, {
-      token: managerToken,
+      token: reviewerToken,
       body: { status: 'completed' },
     });
     assert.equal(completed.body.status, 'completed');

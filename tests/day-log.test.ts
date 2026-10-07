@@ -91,6 +91,7 @@ describe('when a daily outcome may be logged', () => {
     const created = tasks.createTask(db, manager(db), {
       ...placement(db),
       title: 'Not begun yet',
+      reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       startDate: today(),
       dueDate: today(),
