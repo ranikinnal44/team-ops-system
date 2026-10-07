@@ -176,6 +176,7 @@ users ─────────┬──< projects(lead) ──< workstreams �
                └──< sessions
 
 tasks ──< task_day_plans                       (one row per day of a multi-day task)
+tasks ──< task_day_logs                        (what each day actually produced)
 tasks ──< task_dependencies >── tasks          (self-referencing, acyclic)
 tasks ──< task_external_links                  (Layer 2+, unused today)
 projects ──  task_ref_sequences                (per-project ref counter)
@@ -189,6 +190,7 @@ projects ──  task_ref_sequences                (per-project ref counter)
 | `tasks` | Every actionable item — see below |
 | `task_supporters` | Supporting members (the single owner stays on `tasks`) |
 | `task_day_plans` | What each day of a multi-day task delivers |
+| `task_day_logs` | What each day actually produced, reported by whoever did the work |
 | `task_dependencies` | "must land before"; cycle-checked in the service layer |
 | `task_ref_sequences` | Per-project counter behind `AD-MAN-001` |
 | `task_history` | Append-only activity log |
@@ -340,7 +342,8 @@ The build timeline is written in relative weeks. `AUTODOCK_W1_START` in `.env` a
 the calendar; change it and re-run `npm run seed:reset` to move the whole plan.
 
 All configuration lives in `.env` — port, database path, passcode, session lifetime, and the
-two exception thresholds (`DUE_SOON_DAYS`, `NO_UPDATE_WORKING_DAYS`). No secret or environment
+exception thresholds (`DUE_SOON_DAYS`, `NO_UPDATE_WORKING_DAYS`, `DAILY_UPDATE_WORKING_DAYS`).
+No secret or environment
 value is hard-coded in source; `.env` is git-ignored.
 
 ### A two-minute tour
@@ -433,7 +436,15 @@ manager-only `Completed → In Progress` reopen (documented below). Completing s
 100 and stamps `completed_at`; reopening clears it. A task cannot enter `Blocked` without a
 blocker description — otherwise "what is blocked" would be a list without reasons.
 
-**Exception engine** — `OVERDUE`, `DUE SOON`, `NO RECENT UPDATE`, `BLOCKED` as pure, threshold-
+**Daily outcome log** — an employee doing the work reports what each day produced into
+`task_day_logs`, the counterpart to the `task_day_plans` that say what it was meant to
+produce. One entry per person per day; re-submitting a day replaces it. Progress and
+blockers raised there land on the task itself, so there is one number, not two that can
+disagree. Only the owner and supporting members may write one, and only while the task is
+in progress or blocked — a manager writing someone else's daily report is not accountability.
+
+**Exception engine** — `OVERDUE`, `DUE SOON`, `NO RECENT UPDATE`, `BLOCKED`, `MISSING DAILY
+UPDATE` as pure, threshold-
 configurable functions. `NO RECENT UPDATE` counts **working days**, so Friday → Monday is one
 day elapsed, not three. A task is never both overdue and due-soon; the more severe flag wins.
 

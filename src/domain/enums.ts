@@ -53,6 +53,8 @@ export const ExceptionFlag = {
   DueSoon: 'DUE_SOON',
   NoRecentUpdate: 'NO_RECENT_UPDATE',
   Blocked: 'BLOCKED',
+  /** In progress, but nobody has said what the last working day produced. */
+  MissingDailyUpdate: 'MISSING_DAILY_UPDATE',
 } as const;
 export type ExceptionFlag = (typeof ExceptionFlag)[keyof typeof ExceptionFlag];
 export const EXCEPTION_FLAGS = Object.values(ExceptionFlag) as readonly ExceptionFlag[];
@@ -62,6 +64,7 @@ export const EXCEPTION_LABEL: Record<ExceptionFlag, string> = {
   DUE_SOON: 'Due within 2 days',
   NO_RECENT_UPDATE: 'No recent update',
   BLOCKED: 'Blocked',
+  MISSING_DAILY_UPDATE: 'No daily outcome logged',
 };
 
 /** Kinds of entries in the task activity log. */
@@ -76,6 +79,7 @@ export const HistoryKind = {
   BlockerCleared: 'blocker_cleared',
   NextActionSet: 'next_action_set',
   EvidenceLinked: 'evidence_linked',
+  DayOutcomeRecorded: 'day_outcome_recorded',
   Reassigned: 'reassigned',
   CommentAdded: 'comment_added',
   DeadlineChangeRequested: 'deadline_change_requested',

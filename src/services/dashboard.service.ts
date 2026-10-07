@@ -49,6 +49,8 @@ export type Summary = {
   dueToday: number;
   dueThisWeek: number;
   noUpdate: number;
+  /** In progress with no daily outcome logged for the last working day. */
+  missingDailyUpdate: number;
   noDueDate: number;
   noPriority: number;
   completionPercent: number;
@@ -71,6 +73,7 @@ export function summarise(tasks: readonly TaskView[], today: IsoDate): Summary {
       (t) => isOpen(t) && t.dueDate !== null && t.dueDate >= week.start && t.dueDate <= week.end,
     ).length,
     noUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.NoRecentUpdate)).length,
+    missingDailyUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.MissingDailyUpdate)).length,
     // Open work carrying no agreed deadline at all — invisible to every
     // deadline rule until someone sets one, so it is counted explicitly.
     noDueDate: tasks.filter((t) => isOpen(t) && t.dueDate === null).length,
@@ -84,10 +87,12 @@ export type ExceptionBuckets = {
   blocked: TaskView[];
   noRecentUpdate: TaskView[];
   dueWithinTwoDays: TaskView[];
+  /** In progress, but the last working day produced no reported outcome. */
+  missingDailyUpdate: TaskView[];
 };
 
 /**
- * The four exception lists the manager works from. A task can legitimately
+ * The five exception lists the manager works from. A task can legitimately
  * appear in more than one (e.g. blocked *and* overdue) — that is the point.
  */
 export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
@@ -98,6 +103,7 @@ export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
     blocked: pick(ExceptionFlag.Blocked),
     noRecentUpdate: pick(ExceptionFlag.NoRecentUpdate),
     dueWithinTwoDays: pick(ExceptionFlag.DueSoon),
+    missingDailyUpdate: pick(ExceptionFlag.MissingDailyUpdate),
   };
 }
 
@@ -110,6 +116,8 @@ export type OwnerRollup = {
   overdue: number;
   blocked: number;
   noUpdate: number;
+  /** Their in-progress work owing a daily outcome. */
+  missingDailyUpdate: number;
   completed: number;
   completionPercent: number;
   /** Highest-attention open task for this person — "what to ask them about". */
@@ -180,6 +188,7 @@ export function managerDashboard(db: Database, actor: Actor, now = new Date()): 
         overdue: owned.filter((t) => hasFlag(t, ExceptionFlag.Overdue)).length,
         blocked: owned.filter((t) => hasFlag(t, ExceptionFlag.Blocked)).length,
         noUpdate: owned.filter((t) => hasFlag(t, ExceptionFlag.NoRecentUpdate)).length,
+        missingDailyUpdate: owned.filter((t) => hasFlag(t, ExceptionFlag.MissingDailyUpdate)).length,
         noDueDate: open.filter((t) => t.dueDate === null).length,
         completed,
         completionPercent: owned.length === 0 ? 0 : Math.round((completed / owned.length) * 100),
@@ -264,6 +273,8 @@ export type EmployeeDashboard = {
   awaitingReview: TaskView[];
   recentlyCompleted: TaskView[];
   needsUpdate: TaskView[];
+  /** My in-progress work owing a daily outcome. */
+  needsDailyOutcome: TaskView[];
   /** My open work with no agreed deadline. */
   noDueDate: TaskView[];
   myDeadlineRequests: DeadlineChangeRequest[];
@@ -304,6 +315,9 @@ export function employeeDashboard(
     awaitingReview: open.filter((t) => t.status === TaskStatus.Review).sort(byAttention),
     recentlyCompleted,
     needsUpdate: open.filter((t) => hasFlag(t, ExceptionFlag.NoRecentUpdate)).sort(byAttention),
+    needsDailyOutcome: open
+      .filter((t) => hasFlag(t, ExceptionFlag.MissingDailyUpdate))
+      .sort(byAttention),
     noDueDate: open.filter((t) => t.dueDate === null).sort(byAttention),
     myDeadlineRequests: deadlineRepo.listDeadlineRequests(db, { requestedById: userId }),
   };

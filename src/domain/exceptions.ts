@@ -29,14 +29,32 @@ export type EvaluableTask = {
   readonly status: TaskStatus;
   readonly dueDate: IsoDate | null;
   readonly lastUpdatedAt: IsoTimestamp;
+  /**
+   * Most recent day a daily outcome was logged against the task.
+   *
+   * Three states, and the difference matters: `undefined` means the caller did
+   * not load logs and the daily-update rule stays silent rather than guessing;
+   * `null` means loaded and there are none; a date means loaded and that was
+   * the last one.
+   */
+  readonly lastDayLogDate?: IsoDate | null;
 };
 
 export type RuleThresholds = {
   readonly dueSoonDays: number;
   readonly noUpdateWorkingDays: number;
+  /**
+   * Working days a task may be in progress without a daily outcome before it
+   * is chased. 1 means "yesterday was fine, skipping a whole working day is not".
+   */
+  readonly dailyUpdateWorkingDays: number;
 };
 
-export const DEFAULT_THRESHOLDS: RuleThresholds = { dueSoonDays: 2, noUpdateWorkingDays: 2 };
+export const DEFAULT_THRESHOLDS: RuleThresholds = {
+  dueSoonDays: 2,
+  noUpdateWorkingDays: 2,
+  dailyUpdateWorkingDays: 1,
+};
 
 /** Completed work is never an exception, whatever its dates say. */
 export const isOpen = (task: EvaluableTask): boolean => task.status !== TaskStatus.Completed;
@@ -76,6 +94,28 @@ export function hasNoRecentUpdate(
   return elapsed > thresholds.noUpdateWorkingDays;
 }
 
+/**
+ * In progress, and the last working day produced no reported outcome.
+ *
+ * Deliberately narrower than NO_RECENT_UPDATE: that rule watches any edit to
+ * the task, this one watches the daily report specifically. A task can be
+ * edited daily and still never say what a day delivered.
+ *
+ * Only live work is chased. Blocked work is already flagged as blocked, and
+ * asking someone to file a daily outcome on a task they cannot progress is
+ * noise rather than accountability.
+ */
+export function needsDailyUpdate(
+  task: EvaluableTask,
+  today: IsoDate = todayDate(),
+  thresholds: RuleThresholds = DEFAULT_THRESHOLDS,
+): boolean {
+  if (task.status !== TaskStatus.InProgress) return false;
+  if (task.lastDayLogDate === undefined) return false;
+  if (task.lastDayLogDate === null) return true;
+  return workingDaysBetween(task.lastDayLogDate, today) > thresholds.dailyUpdateWorkingDays;
+}
+
 /** Status == Blocked */
 export const isBlocked = (task: EvaluableTask): boolean => task.status === TaskStatus.Blocked;
 
@@ -110,6 +150,7 @@ export function evaluateTask(
   else if (isDueSoon(task, today, thresholds)) flags.push(ExceptionFlag.DueSoon);
   if (isBlocked(task)) flags.push(ExceptionFlag.Blocked);
   if (hasNoRecentUpdate(task, today, thresholds)) flags.push(ExceptionFlag.NoRecentUpdate);
+  if (needsDailyUpdate(task, today, thresholds)) flags.push(ExceptionFlag.MissingDailyUpdate);
   return flags;
 }
 
@@ -143,5 +184,6 @@ export function attentionScore(
   if (flags.includes(ExceptionFlag.Blocked)) score += 60;
   if (flags.includes(ExceptionFlag.DueSoon)) score += 35;
   if (flags.includes(ExceptionFlag.NoRecentUpdate)) score += 25;
+  if (flags.includes(ExceptionFlag.MissingDailyUpdate)) score += 20;
   return score;
 }

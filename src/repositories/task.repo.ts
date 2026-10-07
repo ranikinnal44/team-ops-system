@@ -51,6 +51,7 @@ type ContextRow = {
   deliverable_name: string | null;
   owner_name: string | null;
   reviewer_name: string | null;
+  last_day_log_date: string | null;
 };
 
 /** Task row plus its hierarchy and the names the UI renders. */
@@ -68,7 +69,10 @@ const CONTEXT_SELECT = `
   m.name AS milestone_name,
   d.name AS deliverable_name,
   o.name AS owner_name,
-  r.name AS reviewer_name
+  r.name AS reviewer_name,
+  -- Carried on every task row so the daily-update rule never costs an extra
+  -- query per task; NULL means no outcome has ever been logged.
+  (SELECT MAX(l.log_date) FROM task_day_logs l WHERE l.task_id = t.id) AS last_day_log_date
 FROM tasks t
 JOIN workstreams  w ON w.id = t.workstream_id
 JOIN projects     p ON p.id = w.project_id
@@ -122,6 +126,7 @@ function mapTask(
     projectName: row.project_name,
     workstreamCode: row.workstream_code,
     workstreamName: row.workstream_name,
+    lastDayLogDate: toText(row.last_day_log_date),
     milestoneName: toText(row.milestone_name),
     deliverableName: toText(row.deliverable_name),
     ownerName: toText(row.owner_name),

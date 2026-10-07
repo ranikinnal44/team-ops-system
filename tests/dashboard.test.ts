@@ -199,6 +199,12 @@ describe('summary helpers', () => {
 
   test('bucketing an empty set yields empty buckets', () => {
     const buckets = bucketExceptions([]);
-    assert.deepEqual(buckets, { overdue: [], blocked: [], noRecentUpdate: [], dueWithinTwoDays: [] });
+    assert.deepEqual(buckets, {
+      overdue: [],
+      blocked: [],
+      noRecentUpdate: [],
+      dueWithinTwoDays: [],
+      missingDailyUpdate: [],
+    });
   });
 });

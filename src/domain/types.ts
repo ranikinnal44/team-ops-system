@@ -153,6 +153,27 @@ export type TaskContext = {
   readonly deliverableName: string | null;
   readonly ownerName: string | null;
   readonly reviewerName: string | null;
+  /** Most recent day a daily outcome was logged, or `null` if never. */
+  readonly lastDayLogDate: IsoDate | null;
+};
+
+/**
+ * One day's reported outcome on a task.
+ *
+ * The counterpart to `TaskDayPlan`: the plan says what a day was meant to
+ * produce, this says what it did. Written by whoever is doing the work.
+ */
+export type TaskDayLog = {
+  readonly id: string;
+  readonly taskId: string;
+  readonly authorId: string;
+  readonly authorName: string;
+  readonly logDate: IsoDate;
+  readonly outcome: string;
+  readonly progress: number | null;
+  readonly blocker: string | null;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
 };
 
 export type TaskView = Task &

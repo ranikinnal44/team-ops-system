@@ -9,9 +9,14 @@ import { createDatabase } from './connection.ts';
 import { config } from '../config/index.ts';
 import { nowTimestamp } from '../lib/dates.ts';
 
-export const SCHEMA_VERSION = '5';
+export const SCHEMA_VERSION = '6';
 
 /**
+ * Schema 6 added `task_day_logs` — what a day actually produced, as reported
+ * by whoever did the work, alongside the `task_day_plans` that say what it was
+ * meant to produce. Purely additive, so the `CREATE TABLE IF NOT EXISTS` in the
+ * schema file brings a v5 database up to date with nothing to do here.
+ *
  * Schema 5 made start and end dates mandatory on tasks, milestones and
  * deliverables. SQLite cannot add a NOT NULL constraint in place, and a v4
  * database may hold undated rows with nothing to derive a date from, so the

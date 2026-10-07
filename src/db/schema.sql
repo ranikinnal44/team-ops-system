@@ -170,6 +170,32 @@ CREATE TABLE IF NOT EXISTS task_day_plans (
 );
 CREATE INDEX IF NOT EXISTS idx_task_day_plans_date ON task_day_plans(day_date);
 
+-- What a day ACTUALLY produced, written by the person doing the work.
+--
+-- `task_day_plans` is the commitment; this is the report against it. They are
+-- deliberately separate tables: the plan is authored once by whoever scheduled
+-- the task, the log accumulates daily from whoever is doing it, and a day that
+-- was never planned can still be reported on.
+--
+-- One row per person per task per calendar day. Re-submitting the same day
+-- replaces that day's entry rather than appending a second one, so "today's
+-- update" always has a single answer.
+CREATE TABLE IF NOT EXISTS task_day_logs (
+  id         TEXT PRIMARY KEY,
+  task_id    TEXT NOT NULL REFERENCES tasks(id)  ON DELETE CASCADE,
+  author_id  TEXT NOT NULL REFERENCES users(id)  ON DELETE RESTRICT,
+  log_date   TEXT NOT NULL,
+  outcome    TEXT NOT NULL,
+  -- Nullable: "here is what I did" does not oblige anyone to put a number on it.
+  progress   INTEGER CHECK (progress IS NULL OR progress BETWEEN 0 AND 100),
+  blocker    TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (task_id, author_id, log_date)
+);
+CREATE INDEX IF NOT EXISTS idx_task_day_logs_task ON task_day_logs(task_id, log_date);
+CREATE INDEX IF NOT EXISTS idx_task_day_logs_date ON task_day_logs(log_date);
+
 -- Supporting members: many-to-many, the single accountable owner stays on tasks.
 CREATE TABLE IF NOT EXISTS task_supporters (
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

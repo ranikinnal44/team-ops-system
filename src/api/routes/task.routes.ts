@@ -17,6 +17,7 @@ import {
 } from '../../lib/validate.ts';
 import { TASK_STATUSES, PRIORITIES, type TaskStatus, type Priority } from '../../domain/enums.ts';
 import { MAX_DAY_OUTCOME_LENGTH } from '../../domain/task-schedule.ts';
+import { MAX_DAY_LOG_OUTCOME_LENGTH } from '../../services/task.service.ts';
 import { TRANSITIONS } from '../../domain/status-machine.ts';
 import { config } from '../../config/index.ts';
 
@@ -27,6 +28,17 @@ import { config } from '../../config/index.ts';
 const dayPlanSchema = object({
   date: isoDate(),
   outcome: str({ max: MAX_DAY_OUTCOME_LENGTH }),
+});
+
+/**
+ * A day's reported outcome. `logDate` defaults to today in the service; the
+ * rules about who may write it and when live there too.
+ */
+const dayLogSchema = object({
+  logDate: optional(isoDate()),
+  outcome: str({ max: MAX_DAY_LOG_OUTCOME_LENGTH }),
+  progress: optional(nullable(int({ min: 0, max: 100 }))),
+  blocker: optional(nullable(str({ max: 2000 }))),
 });
 
 const createSchema = object({
@@ -195,6 +207,18 @@ export const taskRoutes: Route[] = [
       tasks.addComment(db, actor, params.id as string, parseOrThrow(commentSchema, body).body),
   },
   {
+    method: 'GET',
+    path: '/api/tasks/:id/day-logs',
+    handler: ({ db, actor, params }) => tasks.listDayLogs(db, actor, params.id as string),
+  },
+  {
+    method: 'POST',
+    path: '/api/tasks/:id/day-logs',
+    status: 201,
+    handler: ({ db, actor, params, body }) =>
+      tasks.recordDayOutcome(db, actor, params.id as string, parseOrThrow(dayLogSchema, body)),
+  },
+  {
     method: 'POST',
     path: '/api/tasks/:id/deadline-requests',
     status: 201,
@@ -247,6 +271,7 @@ export const taskRoutes: Route[] = [
       maxTaskSpanDays: config.rules.maxTaskSpanDays,
       dueSoonDays: config.rules.dueSoonDays,
       noUpdateWorkingDays: config.rules.noUpdateWorkingDays,
+      dailyUpdateWorkingDays: config.rules.dailyUpdateWorkingDays,
     }),
   },
 ];

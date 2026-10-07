@@ -12,6 +12,7 @@ import * as userRepo from '../repositories/user.repo.ts';
 import * as activityRepo from '../repositories/activity.repo.ts';
 import * as deadlineRepo from '../repositories/deadline.repo.ts';
 import * as clarificationRepo from '../repositories/clarification.repo.ts';
+import * as dayLogRepo from '../repositories/day-log.repo.ts';
 import type { TaskWithContext } from '../repositories/task.repo.ts';
 import type {
   Actor,
@@ -20,6 +21,7 @@ import type {
   Comment,
   DeadlineChangeRequest,
   TaskDayPlan,
+  TaskDayLog,
 } from '../domain/types.ts';
 import {
   TaskStatus,
@@ -58,11 +60,12 @@ import {
   formatDateHuman,
   type IsoDate,
 } from '../lib/dates.ts';
-import { notFound, conflict, validationError, forbidden } from '../lib/errors.ts';
+import { notFound, conflict, validationError, forbidden, type ErrorDetail } from '../lib/errors.ts';
 
 const thresholds = (): RuleThresholds => ({
   dueSoonDays: config.rules.dueSoonDays,
   noUpdateWorkingDays: config.rules.noUpdateWorkingDays,
+  dailyUpdateWorkingDays: config.rules.dailyUpdateWorkingDays,
 });
 
 /** Longest span a task may cover, in inclusive calendar days. */
@@ -1037,3 +1040,137 @@ export function listDeadlineRequests(
   return deadlineRepo.listDeadlineRequests(db, { ...opts, requestedById: actor.id });
 }
 
+
+// --- daily outcome log ----------------------------------------------------
+
+export const MAX_DAY_LOG_OUTCOME_LENGTH = 1000;
+
+export type DayLogInput = {
+  /** Defaults to today. A future date is refused — you cannot report forward. */
+  logDate?: IsoDate;
+  outcome: string;
+  progress?: number | null;
+  blocker?: string | null;
+};
+
+/**
+ * Record what a day actually produced.
+ *
+ * Who: the owner or a supporting member — the people doing the work. A
+ * reviewer watches the task but does not report on it, and a manager writing
+ * someone else's daily outcome would put words in their mouth, so neither can.
+ *
+ * When: only while the task is in progress or blocked. A not-started task has
+ * produced nothing yet, and a finished one is closed; allowing either would
+ * make the log a place to write history rather than a daily report.
+ */
+export function recordDayOutcome(
+  db: Database,
+  actor: Actor,
+  taskId: string,
+  input: DayLogInput,
+  now = new Date(),
+): TaskDayLog {
+  const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
+  if (!task) throw notFound('Task');
+  assertCanViewTask(actor.role, task, actor.id);
+
+  const isDoer =
+    task.ownerId === actor.id || task.supportingMemberIds.includes(actor.id);
+  if (!isDoer) {
+    throw forbidden(
+      'Only the task owner or a supporting member can log a daily outcome — ' +
+        'it is a report on work done, not a note about it.',
+    );
+  }
+
+  if (task.status !== TaskStatus.InProgress && task.status !== TaskStatus.Blocked) {
+    throw conflict(
+      `A daily outcome can only be logged while a task is in progress or blocked; ` +
+        `this one is ${STATUS_LABEL[task.status]}.`,
+    );
+  }
+
+  const today = todayDate(now);
+  const logDate = input.logDate ?? today;
+  const details: ErrorDetail[] = [];
+  if (logDate > today) {
+    details.push({ path: 'logDate', message: 'cannot be in the future' });
+  }
+  const outcome = input.outcome.trim();
+  if (outcome === '') {
+    details.push({ path: 'outcome', message: 'say what the day produced' });
+  } else if (outcome.length > MAX_DAY_LOG_OUTCOME_LENGTH) {
+    details.push({
+      path: 'outcome',
+      message: `must be at most ${MAX_DAY_LOG_OUTCOME_LENGTH} characters`,
+    });
+  }
+  if (input.progress !== undefined && input.progress !== null) {
+    if (!Number.isInteger(input.progress) || input.progress < 0 || input.progress > 100) {
+      details.push({ path: 'progress', message: 'must be a whole number between 0 and 100' });
+    }
+  }
+  if (details.length > 0) throw validationError('That daily outcome cannot be recorded', details);
+
+  return transaction(db, () => {
+    const timestamp = nowTimestamp(now);
+    const existing = dayLogRepo.findDayLog(db, task.id, actor.id, logDate);
+    const stored = dayLogRepo.upsertDayLog(
+      db,
+      { taskId: task.id, authorId: actor.id, logDate, outcome, progress: input.progress, blocker: input.blocker },
+      now,
+    );
+
+    // The reported progress is the task's progress: one number, not two that
+    // can disagree. Recorded as its own history entry so the trail shows why.
+    const patch: taskRepo.TaskColumnPatch = {};
+    if (input.progress !== undefined && input.progress !== null && input.progress !== task.progress) {
+      patch.progress = input.progress;
+      activityRepo.appendHistory(db, {
+        taskId: task.id,
+        actorId: actor.id,
+        kind: HistoryKind.ProgressChanged,
+        field: 'progress',
+        fromValue: task.progress === null ? 'unknown' : `${task.progress}%`,
+        toValue: `${input.progress}%`,
+        note: `From the daily outcome for ${formatDateHuman(logDate)}.`,
+        createdAt: timestamp,
+      });
+    }
+    if (input.blocker !== undefined && (input.blocker ?? null) !== task.blocker) {
+      patch.blocker = input.blocker ?? null;
+      activityRepo.appendHistory(db, {
+        taskId: task.id,
+        actorId: actor.id,
+        kind: input.blocker ? HistoryKind.BlockerAdded : HistoryKind.BlockerCleared,
+        field: 'blocker',
+        fromValue: task.blocker,
+        toValue: input.blocker ?? null,
+        createdAt: timestamp,
+      });
+    }
+    if (Object.keys(patch).length > 0) taskRepo.updateTaskColumns(db, task.id, patch);
+
+    activityRepo.appendHistory(db, {
+      taskId: task.id,
+      actorId: actor.id,
+      kind: HistoryKind.DayOutcomeRecorded,
+      field: 'dayLog',
+      fromValue: existing === null ? null : existing.outcome,
+      toValue: outcome,
+      note: formatDateHuman(logDate),
+      createdAt: timestamp,
+    });
+    taskRepo.touchTask(db, task.id, timestamp);
+    return stored;
+  });
+}
+
+/** Every reported day on a task, newest first. Visible to anyone who can see it. */
+export function listDayLogs(db: Database, actor: Actor, taskId: string): TaskDayLog[] {
+  const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
+  if (!task) throw notFound('Task');
+  assertCanViewTask(actor.role, task, actor.id);
+  return dayLogRepo.listDayLogs(db, task.id);
+}

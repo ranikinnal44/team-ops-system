@@ -50,6 +50,8 @@ export type AppConfig = {
   readonly rules: {
     readonly dueSoonDays: number;
     readonly noUpdateWorkingDays: number;
+    /** Working days a task may run without a daily outcome before it is chased. */
+    readonly dailyUpdateWorkingDays: number;
     /**
      * Longest span, in inclusive calendar days, a task may cover. Work that
      * needs longer is a milestone, not a task, and has to be broken down.
@@ -77,6 +79,7 @@ export function loadConfig(): AppConfig {
     rules: {
       dueSoonDays: int('DUE_SOON_DAYS', 2),
       noUpdateWorkingDays: int('NO_UPDATE_WORKING_DAYS', 2),
+      dailyUpdateWorkingDays: int('DAILY_UPDATE_WORKING_DAYS', 1),
       maxTaskSpanDays: int('MAX_TASK_SPAN_DAYS', 3),
     },
     weekAnchor: weekAnchor(),
