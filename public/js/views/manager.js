@@ -34,6 +34,23 @@ export async function managerView(mount) {
     { title: 'Due within 2 days', tasks: ex.dueWithinTwoDays, emptyText: 'Nothing falls due in the next two days.' },
     { title: 'Blocked', tasks: ex.blocked, emptyText: 'Nothing is blocked.' },
     { title: 'No recent update', tasks: ex.noRecentUpdate, emptyText: 'Everything has been updated recently.' },
+    // These two are people waiting rather than work running late, which is why
+    // they sit with the exceptions instead of in a report somewhere.
+    {
+      title: 'Dates awaiting review',
+      tasks: ex.scheduleAwaitingReview ?? [],
+      emptyText: 'No schedule is waiting on a reviewer.',
+    },
+    {
+      title: 'Needs dates',
+      tasks: ex.scheduleNotSet ?? [],
+      emptyText: 'Every assigned task has dates.',
+    },
+    {
+      title: 'No daily outcome',
+      tasks: ex.missingDailyUpdate ?? [],
+      emptyText: 'Every task in progress reported its day.',
+    },
   ]);
 
   /**

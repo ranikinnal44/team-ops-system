@@ -50,17 +50,27 @@ function historyLine(entry) {
  * accept — and listing forty empty days would be noise, not information. Those
  * say what they are and leave it there.
  */
-function dayPlanList(task, maxSpanDays) {
+const SCHEDULE_LABEL = {
+  unset: 'Not set — the owner proposes them',
+  proposed: 'Awaiting review',
+  locked: 'Agreed and locked',
+};
+
+function scheduleLabel(task) {
+  return SCHEDULE_LABEL[task.scheduleState] ?? task.scheduleState;
+}
+
+function dayPlanList(task, maxEffortDays) {
   const days = daysInRange(task.startDate, task.dueDate);
   if (days.length === 0) return el('span', { class: 'muted', text: 'No dates set.' });
   if (days.length === 1) {
     return el('span', { class: 'muted', text: 'Single-day task — the task itself is the outcome.' });
   }
-  if (days.length > maxSpanDays && (task.dayPlans ?? []).length === 0) {
+  if (days.length > maxEffortDays && (task.dayPlans ?? []).length === 0) {
     return el('span', {
       class: 'muted',
       text:
-        `Runs ${days.length} days — longer than the ${maxSpanDays}-day limit for work added ` +
+        `Runs ${days.length} days — longer than the ${maxEffortDays}-day limit for work added ` +
         'here, so it carries no day-by-day plan. Break it up to plan it day by day.',
     });
   }
@@ -83,12 +93,20 @@ function dayPlanList(task, maxSpanDays) {
 }
 
 export async function taskDetailView(mount, params, taskId) {
-  const [data, rules] = await Promise.all([api.task(taskId), api.rules()]);
+  const [data, rules, dayLogs] = await Promise.all([
+    api.task(taskId),
+    api.rules(),
+    api.dayLogs(taskId),
+  ]);
   const task = data.task;
-  const maxSpanDays = rules.maxTaskSpanDays;
+  const maxEffortDays = rules.maxTaskEffortDays;
   const me = session.user;
   const isManager = me?.role === 'manager';
   const canDrive = isManager || task.ownerId === me?.id || task.reviewerId === me?.id;
+  const isOwner = task.ownerId === me?.id;
+  const isReviewer = task.reviewerId === me?.id;
+  const isDoer = isOwner || (task.supportingMemberIds ?? []).includes(me?.id);
+  const locked = task.scheduleState === 'locked';
 
   const openClarifications = (task.clarifications ?? []).filter((c) => !c.resolved);
 
@@ -333,7 +351,26 @@ export async function taskDetailView(mount, params, taskId) {
       task.originalDueDate && task.dueDate !== task.originalDueDate
         ? el('div', { class: 'small muted', text: `Originally committed: ${formatDate(task.originalDueDate)}` })
         : null),
-    fact('Day plan', dayPlanList(task, maxSpanDays)),
+    fact(
+      'Effort budget',
+      task.effortDays === null
+        ? el('span', { class: 'muted', text: 'not set' })
+        : `${task.effortDays} working day${task.effortDays === 1 ? '' : 's'}`,
+      task.originalEffortDays !== null && task.originalEffortDays !== task.effortDays
+        ? el('div', {
+            class: 'small muted',
+            text: `Originally estimated: ${task.originalEffortDays} working days.`,
+          })
+        : null,
+    ),
+    fact(
+      'Dates',
+      el('span', { class: `badge schedule-${task.scheduleState}`, text: scheduleLabel(task) }),
+      task.scheduleReviewNote
+        ? el('div', { class: 'small muted', text: task.scheduleReviewNote })
+        : null,
+    ),
+    fact('Day plan', dayPlanList(task, maxEffortDays)),
     task.sourceTimeline
       ? fact('Planned window', task.sourceTimeline,
           el('div', { class: 'small muted', text: 'Relative week range from the build timeline.' }))
@@ -551,7 +588,7 @@ export async function taskDetailView(mount, params, taskId) {
   const noDeadlineYet = task.dueDate === null;
 
   const storedDays = daysInRange(task.startDate, task.dueDate).length;
-  const overLimit = storedDays > maxSpanDays;
+  const overLimit = storedDays > maxEffortDays;
   const scheduleStart = el('input', { type: 'date', value: task.startDate ?? todayIso() });
   const scheduleEnd = el('input', {
     type: 'date',
@@ -562,11 +599,11 @@ export async function taskDetailView(mount, params, taskId) {
   const scheduleNote = el('div', { class: 'hint' });
 
   const coveredDays = () =>
-    daysInRange(scheduleStart.value, scheduleEnd.value).slice(0, maxSpanDays);
+    daysInRange(scheduleStart.value, scheduleEnd.value).slice(0, maxEffortDays);
 
   function renderScheduleDays() {
     scheduleEnd.min = scheduleStart.value || '';
-    scheduleEnd.max = scheduleStart.value ? addDays(scheduleStart.value, maxSpanDays - 1) : '';
+    scheduleEnd.max = scheduleStart.value ? addDays(scheduleStart.value, maxEffortDays - 1) : '';
     if (scheduleEnd.value && scheduleEnd.min && scheduleEnd.value < scheduleEnd.min) {
       scheduleEnd.value = scheduleEnd.min;
     }
@@ -610,7 +647,7 @@ export async function taskDetailView(mount, params, taskId) {
         scheduleErrors.replaceChildren();
         const days = coveredDays();
         try {
-          await api.updateTask(task.id, {
+          await api.proposeSchedule(task.id, {
             startDate: scheduleStart.value,
             dueDate: scheduleEnd.value,
             dayPlans:
@@ -618,7 +655,15 @@ export async function taskDetailView(mount, params, taskId) {
                 ? days.map((day) => ({ date: day, outcome: (outcomeByDate.get(day) ?? '').trim() }))
                 : [],
           });
-          toast(noDeadlineYet ? 'Schedule set' : 'Schedule updated');
+          // A manager or the reviewer is the person who would approve this
+          // anyway, so their own submission is agreed in the same action
+          // rather than parked in a queue addressed to themselves.
+          if (isManager || isReviewer) {
+            await api.decideSchedule(task.id, { approve: true });
+            toast('Dates agreed');
+          } else {
+            toast('Dates sent for review');
+          }
           taskDetailView(mount, params, taskId);
         } catch (error) {
           scheduleErrors.replaceChildren(errorBox(error));
@@ -631,11 +676,11 @@ export async function taskDetailView(mount, params, taskId) {
     overLimit
       ? el('div', { class: 'hint', style: 'margin-bottom:10px' },
           `This task runs ${storedDays} days, from before it was tracked here. Saving will ` +
-            `shorten it to at most ${maxSpanDays} days; split off the rest as its own task.`)
+            `shorten it to at most ${maxEffortDays} days; split off the rest as its own task.`)
       : null,
     el('div', { class: 'grid-2' },
       field('Start date', scheduleStart),
-      field('End date', scheduleEnd, `At most ${maxSpanDays} days.`)),
+      field('End date', scheduleEnd, `At most ${maxEffortDays} days.`)),
     el('div', { class: 'field' },
       el('label', { text: 'What each day delivers' }), scheduleDays, scheduleNote),
     el('div', { class: 'row' },
@@ -647,7 +692,7 @@ export async function taskDetailView(mount, params, taskId) {
     type: 'date',
     value: task.dueDate ? addDays(task.dueDate, 1) : addDays(todayIso(), 1),
     ...(task.startDate
-      ? { min: task.startDate, max: addDays(task.startDate, maxSpanDays - 1) }
+      ? { min: task.startDate, max: addDays(task.startDate, maxEffortDays - 1) }
       : {}),
   });
   const reasonInput = el('input', { type: 'text', placeholder: 'Why is the date no longer reachable?' });
@@ -706,7 +751,7 @@ export async function taskDetailView(mount, params, taskId) {
         },
         field('New end date', deadlineInput,
           task.startDate
-            ? `A task runs for at most ${maxSpanDays} days, so this cannot go past ${formatDate(addDays(task.startDate, maxSpanDays - 1))}.`
+            ? `A task runs for at most ${maxEffortDays} days, so this cannot go past ${formatDate(addDays(task.startDate, maxEffortDays - 1))}.`
             : null),
         field('Reason', reasonInput),
         el('button', { type: 'submit', text: 'Request deadline change' }),
@@ -751,6 +796,88 @@ export async function taskDetailView(mount, params, taskId) {
     el('ul', { class: 'timeline' }, data.history.map(historyLine)),
   );
 
+  // --- the reviewer agrees the proposed dates ------------------------------
+  const scheduleDecisionNote = el('input', {
+    type: 'text',
+    placeholder: 'Optional note — required in spirit when sending back',
+  });
+  const scheduleDecisionBody =
+    task.scheduleState !== 'proposed'
+      ? null
+      : isReviewer || isManager
+        ? el(
+            'div',
+            {},
+            el('div', { class: 'small' },
+              `${task.startDate ? formatDate(task.startDate) : '—'} → ` +
+              `${task.dueDate ? formatDate(task.dueDate) : '—'}`),
+            el('div', { class: 'small muted', style: 'margin:6px 0' },
+              'Nothing can start until these are agreed, so this is somebody waiting.'),
+            field('Note', scheduleDecisionNote),
+            el('div', { class: 'row' },
+              el('button', { class: 'primary', text: 'Agree dates', onclick: async () => {
+                try {
+                  await api.decideSchedule(task.id, { approve: true, note: scheduleDecisionNote.value.trim() || null });
+                  toast('Dates agreed');
+                  taskDetailView(mount, params, taskId);
+                } catch (error) { toast(error.message, true); }
+              } }),
+              el('button', { class: 'danger', text: 'Send back', onclick: async () => {
+                try {
+                  await api.decideSchedule(task.id, { approve: false, note: scheduleDecisionNote.value.trim() || null });
+                  toast('Sent back to the owner');
+                  taskDetailView(mount, params, taskId);
+                } catch (error) { toast(error.message, true); }
+              } })),
+            el('div', { class: 'hint' },
+              'Sending back keeps the dates as a draft for the owner to revise.'),
+          )
+        : el('div', { class: 'small muted' },
+            `Waiting on ${task.reviewerName ?? 'the reviewer'} to agree these dates.`);
+
+  // --- the daily outcome log ----------------------------------------------
+  const dayLogOutcome = el('input', { type: 'text', placeholder: 'What did today produce?' });
+  const dayLogProgress = el('input', { type: 'number', min: '0', max: '100', placeholder: '%' });
+  const dayLogErrors = el('div');
+  const canLogToday = isDoer && (task.status === 'in_progress' || task.status === 'blocked');
+
+  const dayLogBody = el(
+    'div',
+    {},
+    dayLogs.length === 0
+      ? el('div', { class: 'small muted', text: 'Nothing reported yet.' })
+      : el('div', { class: 'day-log-list' },
+          ...dayLogs.map((log) =>
+            el('div', { class: 'day-log-row' },
+              el('div', { class: 'small muted' },
+                `${formatDate(log.logDate)} · ${log.authorName}` +
+                  (log.progress === null ? '' : ` · ${log.progress}%`)),
+              el('div', { class: 'small', text: log.outcome }),
+              log.blocker ? el('div', { class: 'small flag BLOCKED', text: log.blocker }) : null))),
+    dayLogErrors,
+    canLogToday
+      ? el('form', { style: 'margin-top:10px', onsubmit: async (event) => {
+          event.preventDefault();
+          try {
+            await api.recordDayOutcome(task.id, {
+              outcome: dayLogOutcome.value.trim(),
+              ...(dayLogProgress.value === '' ? {} : { progress: Number(dayLogProgress.value) }),
+            });
+            toast('Daily outcome recorded');
+            taskDetailView(mount, params, taskId);
+          } catch (error) { dayLogErrors.replaceChildren(errorBox(error)); }
+        } },
+        el('div', { class: 'grid-2' },
+          field('Today', dayLogOutcome),
+          field('Progress', dayLogProgress, 'Optional — becomes the task progress.')),
+        el('div', { class: 'row' },
+          el('button', { class: 'primary', type: 'submit', text: 'Record outcome' })))
+      : el('div', { class: 'hint' },
+          isDoer
+            ? 'A daily outcome is recorded while the task is in progress or blocked.'
+            : 'Only the owner and supporting members report on a day\u2019s work.'),
+  );
+
   mount.replaceChildren(
     pageHead(
       task.title,
@@ -788,6 +915,7 @@ export async function taskDetailView(mount, params, taskId) {
         {},
         card('Details', el('div', {}, callouts, facts, sourceBox)),
         canDrive ? card('Update this task', updateForm) : null,
+        card('Daily outcomes', dayLogBody),
         card('Comments', commentsBody),
         history,
       ),
@@ -795,6 +923,7 @@ export async function taskDetailView(mount, params, taskId) {
         'div',
         {},
         clarificationBox,
+        scheduleDecisionBody ? card('Dates awaiting review', scheduleDecisionBody) : null,
         card(isManager ? 'Schedule' : 'Deadline', deadlineBody),
       ),
     ),

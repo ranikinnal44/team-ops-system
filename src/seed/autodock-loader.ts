@@ -25,7 +25,7 @@ import { BUILD_TIMELINE } from './build-timeline-data.ts';
 import { mapSourceStatus } from './source-record.ts';
 import type { IsoDate } from '../lib/dates.ts';
 import { TaskStatus, HistoryKind, ClarificationCode, Origin, ScheduleState } from '../domain/enums.ts';
-import { workingDaysInclusive } from '../lib/dates.ts';
+import {  } from '../lib/dates.ts';
 import { formatTaskRef } from '../lib/ids.ts';
 
 const IMPORT_ACTOR_LABEL = 'Daily task log import';

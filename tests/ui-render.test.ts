@@ -490,24 +490,32 @@ describe('views render against real AutoDock data', () => {
     const node = mount();
     await views.taskDetail.taskDetailView(node, new URLSearchParams(), long.id);
     const text = node.text();
-    assert.match(text, /longer than the 3-day limit/);
+    assert.match(text, /longer than the 5-day limit/);
     // Forty rows of "no outcome defined yet" would be noise, not information.
     assert.equal(findByClass(node, 'day-plan-facts').length, 0);
   });
 
-  test('create task form requires both dates and states the span limit', async () => {
+  test('create task form asks for a budget, not dates, and states the cap', async () => {
     await signIn('rani@example.com');
     const node = mount();
     await views.createTask.createTaskView(node);
     const text = node.text();
     assert.match(text, /Create task/);
     assert.match(text, /not assigned/, 'priority must offer an explicit unassigned option');
-    assert.match(text, /at most 3 days/, 'the span limit has to be stated, not just enforced');
+    assert.match(text, /at most 5 working days/, 'the cap has to be stated, not just enforced');
+
+    const effort = byName(node, 'effortDays');
+    assert.ok(effort, 'expected an effortDays input');
+    assert.equal(effort.getAttribute('required'), '', 'the budget is what a manager must give');
 
     for (const name of ['startDate', 'dueDate']) {
       const input = byName(node, name);
       assert.ok(input, `expected a ${name} input`);
-      assert.equal(input.getAttribute('required'), '', `${name} must be required`);
+      assert.equal(
+        input.getAttribute('required'),
+        null,
+        `${name} must be optional — the owner proposes it`,
+      );
     }
   });
 
@@ -518,6 +526,12 @@ describe('views render against real AutoDock data', () => {
 
     const start = byName(node, 'startDate') as StubElement;
     const due = byName(node, 'dueDate') as StubElement;
+    // Dates start blank now — a manager budgets effort and leaves the days to
+    // the owner — so this test schedules the task directly to reach the form.
+    start.value = ui.todayIso();
+    due.value = ui.todayIso();
+    await fire(start, 'change', { target: start });
+
     // A single-day task has nothing to break down.
     assert.equal(findByClass(node, 'day-plan-row').length, 0);
     assert.match(node.text(), /A one-day task is a single outcome/);
@@ -533,18 +547,20 @@ describe('views render against real AutoDock data', () => {
     }
   });
 
-  test('the end date cannot be pushed past the span limit', async () => {
+  test('the end date cannot be pushed past the budget cap', async () => {
     await signIn('rani@example.com');
     const node = mount();
     await views.createTask.createTaskView(node);
 
     const start = byName(node, 'startDate') as StubElement;
     const due = byName(node, 'dueDate') as StubElement;
+    start.value = ui.todayIso();
+    await fire(start, 'change', { target: start });
     due.value = ui.addDays(start.value, 30);
     await fire(due, 'change', { target: due });
 
-    assert.equal(due.value, ui.addDays(start.value, 2), 'the form pulls it back to the limit');
-    assert.equal(findByClass(node, 'day-plan-row').length, 3);
+    assert.equal(due.value, ui.addDays(start.value, 4), 'the form pulls it back to the cap');
+    assert.equal(findByClass(node, 'day-plan-row').length, 5);
   });
 
   test('the plan resolves the sole project without a listing screen', async () => {

@@ -30,7 +30,7 @@ export async function createTaskView(mount) {
     api.tasks(),
     api.rules(),
   ]);
-  const maxSpanDays = rules.maxTaskSpanDays;
+  const maxEffortDays = rules.maxTaskEffortDays;
 
   const workstreamSel = select(
     workstreams.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })),
@@ -59,8 +59,18 @@ export async function createTaskView(mount) {
   );
   // Both dates are required, and the browser enforces the span before the
   // request is even made. The server checks it again regardless.
-  const startInput = el('input', { type: 'date', name: 'startDate', required: true, value: todayIso() });
-  const dueInput = el('input', { type: 'date', name: 'dueDate', required: true, value: todayIso() });
+  const startInput = el('input', { type: 'date', name: 'startDate', value: '' });
+  const dueInput = el('input', { type: 'date', name: 'dueDate', value: '' });
+  // The manager's unit is effort, not dates. The owner proposes the days that
+  // spend this budget, and the reviewer agrees them.
+  const effortInput = el('input', {
+    type: 'number',
+    name: 'effortDays',
+    required: true,
+    min: '1',
+    max: String(maxEffortDays),
+    value: '1',
+  });
   const nextInput = el('input', { type: 'text', placeholder: 'The first step for the owner' });
 
   const supportBox = el('select', { multiple: true, size: '4' });
@@ -88,13 +98,13 @@ export async function createTaskView(mount) {
   );
 
   function coveredDays() {
-    return daysInRange(startInput.value, dueInput.value).slice(0, maxSpanDays);
+    return daysInRange(startInput.value, dueInput.value).slice(0, maxEffortDays);
   }
 
   function renderDays() {
     // The due date can never precede the start date, nor run past the limit.
     dueInput.min = startInput.value || '';
-    dueInput.max = startInput.value ? addDays(startInput.value, maxSpanDays - 1) : '';
+    dueInput.max = startInput.value ? addDays(startInput.value, maxEffortDays - 1) : '';
     if (startInput.value && dueInput.value && dueInput.value < startInput.value) {
       dueInput.value = startInput.value;
     }
@@ -182,8 +192,12 @@ export async function createTaskView(mount) {
             reviewerId: reviewerSel.value || null,
             supportingMemberIds: picked(supportBox),
             priority: prioritySel.value || null,
-            startDate: startInput.value,
-            dueDate: dueInput.value,
+            effortDays: Number(effortInput.value),
+            // Omitted unless the manager is scheduling the task directly;
+            // normally the owner proposes these.
+            ...(startInput.value && dueInput.value
+              ? { startDate: startInput.value, dueDate: dueInput.value }
+              : {}),
             // Only sent for a multi-day task; a one-day task is its own outcome.
             dayPlans:
               days.length > 1
@@ -209,10 +223,17 @@ export async function createTaskView(mount) {
     el('div', { class: 'grid-2' },
       field('Owner — single accountable person', ownerSel, 'Leave unassigned if it has not been decided.'),
       field('Reviewer', reviewerSel)),
-    el('div', { class: 'grid-3' },
+    el('div', { class: 'grid-2' },
       field('Priority', prioritySel, 'Leave unassigned if it has not been decided.'),
-      field('Start date', startInput, 'Required.'),
-      field('End date', dueInput, `Required. At most ${maxSpanDays} days from the start date.`)),
+      field(
+        'Effort',
+        effortInput,
+        `Required. Working days of effort, at most ${maxEffortDays}. The owner proposes ` +
+          'the dates that spend it.',
+      )),
+    el('div', { class: 'grid-2' },
+      field('Start date', startInput, 'Optional — leave blank for the owner to propose.'),
+      field('End date', dueInput, `Optional. Must fit the ${maxEffortDays} working-day budget.`)),
     dayBox,
     el('div', { class: 'grid-2' },
       field('Supporting members', supportBox, 'Ctrl/Cmd-click to select several.'),
@@ -224,9 +245,11 @@ export async function createTaskView(mount) {
   mount.replaceChildren(
     pageHead(
       'Create task',
-      `Workstream, owner and both dates are required. A task runs for at most ${maxSpanDays} days, ` +
-        'and anything longer than a day has to say what each day delivers. Milestone and priority ' +
-        'stay optional — left unset they are flagged for clarification rather than guessed.',
+      `Workstream, reviewer and an effort budget are required — at most ${maxEffortDays} working days. ` +
+        'Dates are not set here: the owner proposes the days that spend the budget and the reviewer ' +
+        'agrees them. Fill both dates only to schedule the task yourself, which agrees it on the spot. ' +
+        'Milestone and priority stay optional — left unset they are flagged for clarification rather ' +
+        'than guessed.',
     ),
     card(null, form),
   );

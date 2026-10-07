@@ -91,6 +91,11 @@ export async function employeeView(mount, params) {
         { title: 'Blocked', tasks: board.blocked, emptyText: 'Nothing is blocked.' },
         { title: 'Awaiting review', tasks: board.awaitingReview, emptyText: 'Nothing is waiting on review.' },
         { title: 'No recent update', tasks: board.needsUpdate, emptyText: 'Everything is up to date.' },
+        {
+          title: 'Owes a daily outcome',
+          tasks: board.needsDailyOutcome ?? [],
+          emptyText: 'Every task in progress has today\u2019s outcome.',
+        },
         { title: 'Recently completed', tasks: board.recentlyCompleted, emptyText: 'Nothing completed recently.' },
       ],
       own,

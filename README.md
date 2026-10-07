@@ -218,39 +218,44 @@ against the first commitment therefore stays measurable however many extensions 
 
 ### Task scheduling rules
 
-Three rules govern the dates on anything created or rescheduled inside the system. They live
-together in `src/domain/task-schedule.ts`, so the service, the API and the create form all
-enforce one definition rather than three drifting copies.
+Dates are not the manager's to set. The manager budgets **effort**; the owner proposes the
+days that spend it; the reviewer agrees them. The rules live together in
+`src/domain/task-schedule.ts`, so the service, the API and the forms enforce one definition
+rather than three drifting copies.
 
-1. **Both dates are required.** A task has a start date and an end date. Neither is optional and
-   neither is guessed — work with no agreed window cannot be chased, so it is refused at the
-   door rather than accepted and flagged later.
-2. **A task spans at most three days** (`MAX_TASK_SPAN_DAYS`, counted inclusively, so a same-day
-   task is 1). Anything longer is not a task; it is a milestone that has to be broken down. The
-   limit is checked on creation, on every update that touches the dates, and on deadline-change
-   requests, so it cannot be reached by creating a short task and stretching it afterwards.
-3. **Every day of a multi-day task states its outcome.** A two-day task is two checkable
-   outcomes, not one vague block of time. The outcomes are captured while the task is being
-   added, one per calendar day in `[start_date, due_date]`, and stored in `task_day_plans`.
-   A single-day task needs none: the task is its own outcome.
+1. **A task carries an effort budget, in working days** (`MAX_TASK_EFFORT_DAYS`, default 5).
+   Required at creation. Work needing longer is not a task; it is a milestone that has to be
+   broken down. Weekends spend none of a budget, because "three days of effort" means three
+   days worked.
+2. **The owner proposes the dates.** A proposed window may not spend *more* working days than
+   the budget — that is what a budget means. It may spend fewer: finishing three days of work
+   in two is nobody's problem but the owner's. Needing more is what the extension flow is for.
+3. **The reviewer agrees them, and then they lock.** Until they are agreed, work cannot start
+   at all — so an unanswered proposal is somebody sitting idle, which is why
+   `SCHEDULE_AWAITING_REVIEW` outranks a merely stale update on the dashboard. A manager can
+   agree a schedule too, so an absent reviewer never deadlocks a task.
+4. **Locked dates move only through an approved deadline extension** — including for a manager,
+   who would otherwise leave no trace. The extension raises `effort_days` to match the new
+   window while `original_effort_days` and `original_due_date` keep the first estimate, so both
+   the current budget and the slippage against the original stay readable.
+5. **Every day of a multi-day task states its outcome.** A two-day task is two checkable
+   outcomes, not one vague block of time — one row per calendar day in `[start_date, due_date]`,
+   stored in `task_day_plans`. A single-day task needs none: the task is its own outcome.
 
-Rescheduling keeps the outcomes that still fall inside the new dates and reports the days left
-uncovered rather than inventing text for them. The one path that can move an end date without
-anyone having stated the new days' outcomes is an **approved deadline extension**; that raises a
-`MISSING_DAY_OUTCOMES` clarification on the manager's queue, which setting the day plan clears.
+Day outcomes are deliberately **not** locked with the dates. They say what each agreed day
+delivers rather than when the work happens, and an approved extension leaves new days owing
+one; sealing them would open a gap with no way to close it. Rescheduling keeps the outcomes
+still inside the new dates and raises `MISSING_DAY_OUTCOMES` for the rest rather than inventing
+text for them.
 
-**Dates are mandatory everywhere, including imports.** `start_date` and `due_date` are
-`NOT NULL` on tasks, as are `start_date`/`end_date` on milestones and `due_date` on
-deliverables, so a dateless record cannot be stored at all.
-
-The *span and day-outcome limits* remain exempt for imported rows: those limits apply to work
-added through the system, and rejecting history at write time would lose it. Dates are the
-exception to that exception, so an import that states none has to derive them:
+**A task with no dates is a normal state, not a defect.** `start_date` and `due_date` are
+nullable and carry `SCHEDULE_NOT_SET` until the owner proposes them. Imported rows are dated
+according to what their source actually established:
 
 | Source | How it is dated |
 |---|---|
-| Build timeline (28 tasks) | Derived from `AUTODOCK_W1_START`, as before — the plan states a schedule in relative weeks |
-| Daily log (56 tasks) | The day the row was logged stands at **both** ends. The log states no deadline, so `original_due_date` stays null — nothing to measure slippage against — and every open row carries a `MISSING_DUE_DATE` clarification asking for a real one |
+| Build timeline (28 tasks) | Derived from `AUTODOCK_W1_START` — the plan states a schedule in relative weeks, so these arrive **agreed and locked**, with the budget read back out of the window |
+| Daily log (56 tasks) | The day the row was logged stands at **both** ends, and these arrive **unscheduled**: the log records when a task was raised, not when it is due, and a stand-in is not an agreement. Every open row carries a `MISSING_DUE_DATE` clarification asking for a real one |
 | Deliverables | The stated `by W*n*` date where the plan gives one; otherwise the end of the owning milestone. `due_label` is still set only when the plan stated it, so a derived date stays distinguishable |
 | Log-inferred milestones | First to last logged day of the rows they group |
 
@@ -358,6 +363,9 @@ value is hard-coded in source; `.env` is git-ignored.
 4. Open a task, change the status, add a blocker, save → the change appears in the activity
    history and on the manager's exception list.
 5. Try to change the due date as an employee → refused, pointing at the deadline-request flow.
+6. Create a task with an effort budget and no dates → it carries `SCHEDULE_NOT_SET` and cannot
+   be started. Sign in as its owner, propose dates, then as its reviewer, agree them — only
+   then does work begin, and only the reviewer can later mark it complete.
 
 ---
 
@@ -473,6 +481,36 @@ parameterised; static file serving is confined to `public/`; request bodies are 
 
 ---
 
+## Access control
+
+Four independent layers, each in one place.
+
+| Layer | Where | What it decides |
+|---|---|---|
+| Authentication | `api/router.ts` | Resolves a bearer token to an `Actor` before any handler runs |
+| Capability | `domain/permissions.ts` | May this **role** perform this kind of action at all |
+| Scope | `domain/permissions.ts` + `services/project.service.ts` | Which workstreams and tasks **exist** for this person |
+| Field policy | `domain/permissions.ts` | Which columns of a task this role may write |
+
+On top of those sit three **relational** rules — about a person's relationship to one task,
+which a role cannot express:
+
+- **The reviewer** signs work off. Not the owner, not any manager-by-rank — the person assigned
+  to that task (a manager too, so an absent reviewer never deadlocks it).
+- **The owner** proposes dates and requests extensions; they are the one committing.
+- **The owner and supporting members** report daily outcomes. A reviewer watches the work
+  without doing it; a manager filing someone else's daily report would be putting words in
+  their mouth.
+
+A workstream an employee has no part in returns **404, not 403**. "Forbidden" would confirm it
+exists, which is the thing being withheld.
+
+Route capability is checked **before the request body is parsed**, so a caller who may not use
+an endpoint is told that, rather than that their payload is malformed. The service checks it
+again and remains authoritative.
+
+---
+
 ## Known limitations
 
 1. **Authentication is a user picker, not real auth.** A shared passcode from `.env` plus user
@@ -482,9 +520,11 @@ parameterised; static file serving is confined to `public/`; request bodies are 
    because routes only ever see an `Actor`.
 2. **No HTTPS, rate limiting or CSRF protection.** Run it behind a reverse proxy that
    terminates TLS. Tokens are bearer tokens in `localStorage`.
-3. **One transition beyond the brief.** `Completed → In Progress` is implemented as
-   manager-only, because work closed in error otherwise has no route back. Every other
-   transition is exactly as specified.
+3. **Transitions are relational, not role-based.** `Review → Completed` and `Review → In
+   Progress` require the task's assigned reviewer, because an owner signing off their own work
+   is not review. Both exits are gated: gating only the exit to Completed would let an owner
+   withdraw from review and walk the task to Completed the long way round. `Completed → In
+   Progress` is manager-only, because work closed in error otherwise has no route back.
 4. **Dashboard aggregation happens in memory.** Tasks are loaded and the rules evaluated in
    TypeScript rather than SQL. This is deliberate — one source of truth for the rules — and is
    comfortable into the low thousands of tasks. Past that, push the counts into SQL while

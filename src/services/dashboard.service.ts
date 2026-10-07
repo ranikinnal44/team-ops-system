@@ -51,6 +51,10 @@ export type Summary = {
   noUpdate: number;
   /** In progress with no daily outcome logged for the last working day. */
   missingDailyUpdate: number;
+  /** Proposed dates sitting with a reviewer — work blocked until decided. */
+  awaitingScheduleReview: number;
+  /** Assigned and budgeted, but with no dates proposed yet. */
+  scheduleNotSet: number;
   noDueDate: number;
   noPriority: number;
   completionPercent: number;
@@ -74,6 +78,8 @@ export function summarise(tasks: readonly TaskView[], today: IsoDate): Summary {
     ).length,
     noUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.NoRecentUpdate)).length,
     missingDailyUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.MissingDailyUpdate)).length,
+    awaitingScheduleReview: tasks.filter((t) => hasFlag(t, ExceptionFlag.ScheduleAwaitingReview)).length,
+    scheduleNotSet: tasks.filter((t) => hasFlag(t, ExceptionFlag.ScheduleNotSet)).length,
     // Open work carrying no agreed deadline at all — invisible to every
     // deadline rule until someone sets one, so it is counted explicitly.
     noDueDate: tasks.filter((t) => isOpen(t) && t.dueDate === null).length,
@@ -89,10 +95,14 @@ export type ExceptionBuckets = {
   dueWithinTwoDays: TaskView[];
   /** In progress, but the last working day produced no reported outcome. */
   missingDailyUpdate: TaskView[];
+  /** Dates proposed, reviewer has not decided — nobody can start these. */
+  scheduleAwaitingReview: TaskView[];
+  /** Assigned and budgeted, but the owner has not proposed dates. */
+  scheduleNotSet: TaskView[];
 };
 
 /**
- * The five exception lists the manager works from. A task can legitimately
+ * The exception lists the manager works from. A task can legitimately
  * appear in more than one (e.g. blocked *and* overdue) — that is the point.
  */
 export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
@@ -104,6 +114,8 @@ export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
     noRecentUpdate: pick(ExceptionFlag.NoRecentUpdate),
     dueWithinTwoDays: pick(ExceptionFlag.DueSoon),
     missingDailyUpdate: pick(ExceptionFlag.MissingDailyUpdate),
+    scheduleAwaitingReview: pick(ExceptionFlag.ScheduleAwaitingReview),
+    scheduleNotSet: pick(ExceptionFlag.ScheduleNotSet),
   };
 }
 

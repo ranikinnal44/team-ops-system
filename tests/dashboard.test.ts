@@ -205,6 +205,8 @@ describe('summary helpers', () => {
       noRecentUpdate: [],
       dueWithinTwoDays: [],
       missingDailyUpdate: [],
+      scheduleAwaitingReview: [],
+      scheduleNotSet: [],
     });
   });
 });
