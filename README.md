@@ -4,6 +4,10 @@ An internal **team task management and accountability system**: one place that a
 *what is happening, what is late, what is blocked, who owns it, and what needs intervention* —
 and, for the person doing the work, *what do I need to do today and what is blocking me*.
 
+> **Using the tool rather than building it?** See **[USAGE.md](USAGE.md)** — an end-to-end
+> guide for employees, managers and reviewers. This README is the architecture and
+> operations document.
+
 **Current state:** Layer 1, loaded with the **AutoDock Stream 1 build plan** — 28 tasks, 3 phases,
 8 milestones and 13 deliverables imported from `Build Timeline.pdf`. See **[AUTODOCK.md](AUTODOCK.md)** for the import, the data-quality report and
 what the source document did and did not establish.
