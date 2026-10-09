@@ -171,30 +171,32 @@ describe('team service', () => {
     );
   });
 
-  test('an employee sees the roster but not how loaded anyone is', () => {
-    const asEmployee = team.listTeam(db, employee1(db));
-    assert.ok(asEmployee.length > 0);
-    assert.ok(
-      asEmployee.every((m) => m.openTasks === null && m.totalTasks === null),
-      'workload counts are manager-only',
+  test('the roster is closed to an employee', () => {
+    assert.throws(
+      () => team.listTeam(db, employee1(db)),
+      /not permitted/i,
+      'who is on the team, and which role they hold, is manager-only',
     );
-
-    const asManager = team.listTeam(db, manager(db));
-    assert.ok(asManager.every((m) => typeof m.openTasks === 'number'));
-    assert.ok(asManager.some((m) => (m.openTasks ?? 0) > 0));
   });
 
-  test('an employee asking for inactive members still only gets active ones', () => {
+  test('and to a reviewer, who sees every task but not the organisation chart', () => {
     const added = team.addTeamMember(db, manager(db), {
-      name: 'Gone',
-      email: 'gone@example.com',
-      role: Role.Employee,
+      name: 'Reviewer',
+      email: 'reviewer@example.com',
+      role: Role.Reviewer,
       passcode: 'test-passcode',
     });
-    team.updateTeamMember(db, manager(db), added.id, { active: false });
+    assert.throws(
+      () => team.listTeam(db, { id: added.id, name: added.name, role: added.role }),
+      /not permitted/i,
+    );
+  });
 
-    const roster = team.listTeam(db, employee1(db), { includeInactive: true });
-    assert.ok(!roster.some((m) => m.id === added.id));
+  test('a manager still sees everyone, with how much each is carrying', () => {
+    const roster = team.listTeam(db, manager(db));
+    assert.ok(roster.length > 0);
+    assert.ok(roster.every((m) => typeof m.openTasks === 'number'));
+    assert.ok(roster.some((m) => m.openTasks > 0));
   });
 });
 

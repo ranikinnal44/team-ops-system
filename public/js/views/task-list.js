@@ -124,7 +124,7 @@ export async function taskListView(mount, params) {
 
   const [workstreams, users] = await Promise.all([
     api.workstreams().catch(() => []),
-    seesAll ? api.users().catch(() => []) : Promise.resolve([]),
+    isManager ? api.users().catch(() => []) : Promise.resolve([]),
   ]);
 
   const search = el('input', {
@@ -175,7 +175,10 @@ export async function taskListView(mount, params) {
   });
 
   const refine = [statusSel, prioritySel, exceptionSel, gapSel, workstreamSel];
-  if (seesAll) {
+  // Picking a person by name needs the roster, which is manager-only. A
+  // reviewer still reaches their own queue through the lenses below, which
+  // ask for nobody but the signed-in user.
+  if (isManager) {
     const ownerSel = select(
       [{ value: '', label: 'All owners' }, ...users.map((u) => ({ value: u.id, label: u.name }))],
       filters.ownerId,

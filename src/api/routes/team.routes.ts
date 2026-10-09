@@ -1,4 +1,5 @@
 import type { Route } from '../http.ts';
+import { Capability } from '../../domain/permissions.ts';
 import * as team from '../../services/team.service.ts';
 import { ROLES } from '../../domain/enums.ts';
 import { object, str, oneOf, bool, optional, nullable, parseOrThrow } from '../../lib/validate.ts';
@@ -27,6 +28,7 @@ export const teamRoutes: Route[] = [
   {
     method: 'GET',
     path: '/api/team',
+    capability: Capability.ViewTeam,
     handler: ({ db, actor, query }) =>
       team.listTeam(db, actor, { includeInactive: query.get('includeInactive') === 'true' }),
   },

@@ -961,15 +961,16 @@ describe('views render against real AutoDock data', () => {
     assert.match(text, /open/, 'a manager sees how much open work each person holds');
   });
 
-  test('an employee sees the roster without the add form or workload counts', async () => {
+  test('an employee is told the roster is closed, not shown a stripped-down one', async () => {
     await signIn('faizan@example.com');
     const node = mount();
     await views.team.teamView(node);
     const text = node.text();
-    assert.match(text, /Team members/);
-    assert.match(text, /Ashutosh/);
+    assert.match(text, /manager-only/i);
     assert.ok(!text.includes('Add a team member'), 'employees cannot add members');
-    assert.ok(!text.includes('Deactivate'), 'employees get no roster actions');
+    for (const name of ['Ashutosh', 'Mallikarjun']) {
+      assert.ok(!text.includes(name), 'no colleague is named');
+    }
   });
 
   // These drive the handlers rather than just the markup: rendering a form

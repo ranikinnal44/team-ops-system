@@ -1,6 +1,7 @@
 import type { Route } from '../http.ts';
 import * as projects from '../../services/project.service.ts';
 import * as userRepo from '../../repositories/user.repo.ts';
+import { Capability } from '../../domain/permissions.ts';
 import {
   object, str, optional, nullable, isoDate, bool, arrayOf, parseOrThrow,
 } from '../../lib/validate.ts';
@@ -73,8 +74,12 @@ const deliverableSchema = object({
 
 export const projectRoutes: Route[] = [
   {
+    // Names and roles of everyone, which is the roster by another route.
+    // Guarded the same way, or the Team screen's restriction would be a
+    // matter of which URL somebody typed.
     method: 'GET',
     path: '/api/users',
+    capability: Capability.ViewTeam,
     handler: ({ db }) => userRepo.listUsers(db, { activeOnly: true }),
   },
   {

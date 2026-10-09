@@ -7,7 +7,7 @@
  */
 import { api, session } from '../api.js';
 import {
-  el, card, field, select, stat, pageHead, errorBox, toast, initials, roleLabel,
+  el, card, field, select, stat, pageHead, errorBox, toast, initials, roleLabel, emptyState,
 } from '../ui.js';
 
 const ROLE_OPTIONS = [
@@ -20,6 +20,18 @@ const roleBadge = (role) => el('span', { class: `badge role-${role}`, text: role
 
 export async function teamView(mount) {
   const isManager = session.user?.role === 'manager';
+  // The router keeps non-managers out, but a pasted link should not render a
+  // half-page and then fail on the fetch.
+  if (!isManager) {
+    mount.replaceChildren(
+      pageHead('Team', 'Manager only'),
+      emptyState(
+        'The team roster is manager-only',
+        'Ask your manager who to speak to. The people you work with are named on the tasks you share.',
+      ),
+    );
+    return;
+  }
   let editingId = null;
   let showInactive = false;
 

@@ -28,7 +28,7 @@ const ROUTES = [
   { pattern: /^\/tasks$/, view: taskListView },
   { pattern: /^\/plan$/, view: planView, managerOnly: true },
   { pattern: /^\/milestones$/, view: milestonesView },
-  { pattern: /^\/team$/, view: teamView },
+  { pattern: /^\/team$/, view: teamView, managerOnly: true },
   { pattern: /^\/activity$/, view: activityView },
 ];
 
@@ -51,7 +51,7 @@ function chrome(activePath) {
     { href: '#/tasks', label: 'Tasks' },
     isManager ? { href: '#/plan', label: 'Plan' } : null,
     { href: '#/milestones', label: 'Milestones' },
-    { href: '#/team', label: 'Team' },
+    isManager ? { href: '#/team', label: 'Team' } : null,
     { href: '#/activity', label: 'Activity' },
   ].filter(Boolean);
 

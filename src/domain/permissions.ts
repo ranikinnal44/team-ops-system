@@ -22,6 +22,15 @@ export const Capability = {
   DecideDeadlineRequest: 'deadline_request:decide',
   RequestDeadlineChange: 'deadline_request:create',
   ViewTeamProgress: 'dashboard:team',
+  /**
+   * See the roster: who exists, their role, their email.
+   *
+   * Separate from ManageTeam because viewing and changing are different
+   * questions — they simply have the same answer, which is "a manager".
+   * Knowing who holds which role is organisational information, not
+   * something needed to do or to review the work.
+   */
+  ViewTeam: 'team:view',
   ResolveClarification: 'clarification:resolve',
   ManageTeam: 'team:manage',
   ManageSupply: 'supply:manage',
@@ -39,6 +48,7 @@ const MANAGER_CAPABILITIES: readonly Capability[] = [
   Capability.ReassignTask,
   Capability.DecideDeadlineRequest,
   Capability.ViewTeamProgress,
+  Capability.ViewTeam,
   Capability.ResolveClarification,
   Capability.ManageTeam,
   Capability.ManageSupply,

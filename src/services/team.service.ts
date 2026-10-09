@@ -1,8 +1,10 @@
 /**
  * The team roster.
  *
- * Reading the directory is open to every authenticated user — people need to
- * know who is on the team and who to ask. Changing it is manager-only.
+ * Reading the directory is manager-only, as changing it is. Who is on the
+ * team and which role each person holds is organisational information; doing
+ * the work, and reviewing it, needs neither. Names still reach everyone else
+ * the only way they are needed — on the tasks those people are named on.
  *
  * Two invariants are enforced here rather than left to the caller:
  *   1. The team never loses its last active manager, which would leave nobody
@@ -16,19 +18,15 @@ import * as userRepo from '../repositories/user.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import type { Actor, User } from '../domain/types.ts';
 import { Role, TaskStatus } from '../domain/enums.ts';
-import { Capability, assertCan, seesAllWork } from '../domain/permissions.ts';
+import { Capability, assertCan } from '../domain/permissions.ts';
 import { conflict, notFound, validationError } from '../lib/errors.ts';
 import { hashPasscode, passcodeProblem } from '../lib/passcode.ts';
 import * as authEventRepo from '../repositories/auth-event.repo.ts';
 
-/**
- * A roster entry. `openTasks` is only populated for a manager: an employee may
- * see who is on the team, but not how loaded each colleague is — that is the
- * same boundary the task list and dashboards already draw.
- */
+/** A roster entry, with how much work the person is carrying. */
 export type TeamMember = User & {
-  readonly openTasks: number | null;
-  readonly totalTasks: number | null;
+  readonly openTasks: number;
+  readonly totalTasks: number;
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,19 +64,16 @@ export function listTeam(
   actor: Actor,
   opts: { includeInactive?: boolean } = {},
 ): TeamMember[] {
-  const isManager = actor.role === Role.Manager;
-  // Deactivated people are a management concern; the load figures are not —
-  // a reviewer needs to see who is carrying what to judge an extension.
-  const seesLoad = seesAllWork(actor.role);
-  const users = userRepo.listUsers(db, { activeOnly: !(isManager && opts.includeInactive) });
+  assertCan(actor.role, Capability.ViewTeam);
+  const users = userRepo.listUsers(db, { activeOnly: !opts.includeInactive });
 
-  const open = seesLoad ? openTaskCounts(db) : null;
-  const total = seesLoad ? taskRepo.countTasksByOwner(db) : null;
+  const open = openTaskCounts(db);
+  const total = taskRepo.countTasksByOwner(db);
 
   return users.map((user) => ({
     ...user,
-    openTasks: open ? (open.get(user.id) ?? 0) : null,
-    totalTasks: total ? (total.get(user.id) ?? 0) : null,
+    openTasks: open.get(user.id) ?? 0,
+    totalTasks: total.get(user.id) ?? 0,
   }));
 }
 
