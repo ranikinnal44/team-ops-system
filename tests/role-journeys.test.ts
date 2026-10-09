@@ -690,3 +690,102 @@ describe('what each role can reach', () => {
     assert.equal((await cast.server.request('GET', '/api/auth/me', { token })).status, 401);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The system's third rule: work is signed off by someone other than whoever
+ * did it. `createTask` enforces it. These check that nothing downstream can
+ * undo it, which is the part that decides whether the rule actually holds.
+ */
+describe('invariant: nobody signs off their own work', () => {
+  let cast: Cast;
+  before(async () => (cast = await assemble()));
+  after(async () => cast.server.close());
+
+  test('a task cannot be created with its owner as its own reviewer', async () => {
+    const refused = await cast.server.request('POST', '/api/tasks', {
+      token: cast.manager,
+      body: {
+        workstreamId: cast.workstreamId,
+        title: 'Self-reviewed at birth',
+        ownerId: cast.ids.owner,
+        reviewerId: cast.ids.owner,
+        effortDays: 1,
+      },
+    });
+    assert.equal(refused.status, 400);
+  });
+
+  test('nor edited into one by pointing the reviewer at the owner', async () => {
+    const { id } = await newTask(cast, { ownerId: cast.ids.owner });
+    const patched = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.manager,
+      body: { reviewerId: cast.ids.owner },
+    });
+    assert.notEqual(
+      patched.status,
+      200,
+      'making the owner their own reviewer must be refused on update, as it is on create',
+    );
+  });
+
+  test('nor by moving the owner onto somebody who already reviews it', async () => {
+    const { id } = await newTask(cast, { ownerId: cast.ids.owner });
+    const patched = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.manager,
+      body: { ownerId: cast.ids.reviewer },
+    });
+    assert.notEqual(patched.status, 200, 'the reviewer must not become the owner of what they review');
+  });
+
+  test('nor in bulk, which is the screen a fresh plan is actually assigned from', async () => {
+    const { id } = await newTask(cast, { ownerId: null });
+    const applied = await cast.server.request('POST', '/api/tasks/bulk-assign', {
+      token: cast.manager,
+      body: { taskIds: [id], ownerId: cast.ids.reviewer },
+    });
+    assert.equal(applied.status, 200);
+    assert.equal(
+      applied.body.updated,
+      0,
+      'bulk assignment must skip a task whose reviewer is the person being made owner',
+    );
+  });
+
+  test('and so the person who did the work can never be the one who signs it off', async () => {
+    const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.manager,
+      body: { reviewerId: cast.ids.owner },
+    });
+
+    const day = nextMonday();
+    await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
+      token: cast.owner,
+      body: { startDate: day, dueDate: day },
+    });
+    await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
+      token: cast.manager,
+      body: { approve: true },
+    });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'in_progress' },
+    });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'review' },
+    });
+
+    const selfSignOff = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'completed' },
+    });
+    assert.notEqual(
+      selfSignOff.status,
+      200,
+      'an employee completed their own task — the review gate was bypassed',
+    );
+  });
+});

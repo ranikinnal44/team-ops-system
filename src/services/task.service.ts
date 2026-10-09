@@ -253,11 +253,7 @@ export function createTask(
   }
   assertActiveUser(db, input.reviewerId, 'reviewerId', 'Reviewer');
   // Nobody reviews their own work; that is the whole point of the gate.
-  if (input.ownerId && input.ownerId === input.reviewerId) {
-    throw validationError('The reviewer cannot be the owner', [
-      { path: 'reviewerId', message: 'must be somebody other than the task owner' },
-    ]);
-  }
+  assertDistinctOwnerAndReviewer(input.ownerId ?? null, input.reviewerId, 'reviewerId');
   for (const id of input.supportingMemberIds ?? []) {
     assertActiveUser(db, id, 'supportingMemberIds', 'Supporting member');
   }
@@ -369,6 +365,31 @@ function assertActiveUser(db: Database, userId: string, path: string, label: str
   if (!user.active) {
     throw validationError(`${label} is deactivated`, [{ path, message: 'is not an active user' }]);
   }
+}
+
+/**
+ * Nobody signs off their own work.
+ *
+ * Checked against the pair the task will END UP with, not against whichever
+ * half of it a caller happened to send: the gate was once enforced only at
+ * creation, which left `updateTask` — and `bulkAssign` through it — able to
+ * walk an existing task into a state the same rule forbids at birth.
+ */
+function assertDistinctOwnerAndReviewer(
+  ownerId: string | null,
+  reviewerId: string | null,
+  path: 'ownerId' | 'reviewerId',
+): void {
+  if (ownerId === null || reviewerId === null || ownerId !== reviewerId) return;
+  throw validationError('The reviewer cannot be the owner', [
+    {
+      path,
+      message:
+        path === 'reviewerId'
+          ? 'must be somebody other than the task owner'
+          : 'must be somebody other than the task reviewer',
+    },
+  ]);
 }
 
 function assertDependenciesExist(db: Database, ids: readonly string[]): void {
@@ -632,6 +653,21 @@ export function updateTask(
   }
 
   // --- manager-only fields -------------------------------------------------
+  // Resolved before either field is written, so a payload that moves the owner
+  // and the reviewer at once is judged on where it lands rather than on the
+  // order the two happen to be applied in.
+  if (fields.ownerId !== undefined || fields.reviewerId !== undefined) {
+    const ownerAfter = fields.ownerId !== undefined ? fields.ownerId : task.ownerId;
+    const reviewerAfter = fields.reviewerId !== undefined ? fields.reviewerId : task.reviewerId;
+    // Blamed on whichever side the caller actually moved: telling someone the
+    // reviewer is wrong is unhelpful when they were reassigning the owner.
+    assertDistinctOwnerAndReviewer(
+      ownerAfter,
+      reviewerAfter,
+      fields.reviewerId !== undefined ? 'reviewerId' : 'ownerId',
+    );
+  }
+
   if (fields.ownerId !== undefined && fields.ownerId !== task.ownerId) {
     assertCan(actor.role, Capability.ReassignTask);
     // `null` clears the owner; the task goes back to unassigned rather than
