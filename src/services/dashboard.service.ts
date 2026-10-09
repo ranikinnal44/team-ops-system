@@ -14,14 +14,13 @@ import * as hierarchyRepo from '../repositories/hierarchy.repo.ts';
 import type { Actor, TaskView, DeadlineChangeRequest } from '../domain/types.ts';
 import {
   TaskStatus,
-  Role,
-  ExceptionFlag,
+    ExceptionFlag,
   PRIORITY_RANK,
   DeadlineRequestStatus,
   CLARIFICATION_LABEL,
   type ClarificationCode,
 } from '../domain/enums.ts';
-import { Capability, assertCan } from '../domain/permissions.ts';
+import { Capability, assertCan, seesAllWork } from '../domain/permissions.ts';
 import { todayDate, addDays, weekBounds, daysBetween, type IsoDate } from '../lib/dates.ts';
 import { toTaskViews } from './task.service.ts';
 
@@ -248,6 +247,7 @@ export function managerDashboard(db: Database, actor: Actor, now = new Date()): 
 
   const clarificationCounts = clarificationRepo.countByCode(db, { unresolvedOnly: true });
 
+
   return {
     generatedFor: today,
     summary: summarise(tasks, today),
@@ -299,7 +299,7 @@ export function employeeDashboard(
   now = new Date(),
 ): EmployeeDashboard {
   // Managers may inspect any individual's board; employees only ever see theirs.
-  const userId = actor.role === Role.Manager && targetUserId ? targetUserId : actor.id;
+  const userId = seesAllWork(actor.role) && targetUserId ? targetUserId : actor.id;
   const today = todayDate(now);
   const tomorrow = addDays(today, 1);
   const week = weekBounds(today);

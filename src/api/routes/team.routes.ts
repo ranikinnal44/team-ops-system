@@ -2,12 +2,18 @@ import type { Route } from '../http.ts';
 import * as team from '../../services/team.service.ts';
 import { ROLES } from '../../domain/enums.ts';
 import { object, str, oneOf, bool, optional, nullable, parseOrThrow } from '../../lib/validate.ts';
+import { MIN_PASSCODE_LENGTH, MAX_PASSCODE_LENGTH } from '../../lib/passcode.ts';
 
 const newMemberSchema = object({
   name: str({ max: 120 }),
   email: str({ max: 200 }),
   role: oneOf(ROLES),
   title: optional(nullable(str({ max: 120 }))),
+  passcode: str({ min: MIN_PASSCODE_LENGTH, max: MAX_PASSCODE_LENGTH }),
+});
+
+const passcodeSchema = object({
+  passcode: str({ min: MIN_PASSCODE_LENGTH, max: MAX_PASSCODE_LENGTH }),
 });
 
 const memberPatchSchema = object({
@@ -36,5 +42,12 @@ export const teamRoutes: Route[] = [
     path: '/api/team/:id',
     handler: ({ db, actor, params, body }) =>
       team.updateTeamMember(db, actor, params.id as string, parseOrThrow(memberPatchSchema, body)),
+  },
+  {
+    // Replace somebody's passcode. There is no endpoint that reads one back.
+    method: 'POST',
+    path: '/api/team/:id/passcode',
+    handler: ({ db, actor, params, body }) =>
+      team.resetPasscode(db, actor, params.id as string, parseOrThrow(passcodeSchema, body).passcode),
   },
 ];

@@ -9,8 +9,8 @@ import type { Database } from '../db/connection.ts';
 import * as clarificationRepo from '../repositories/clarification.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import type { Actor, TaskView, TaskClarification } from '../domain/types.ts';
-import { Role, CLARIFICATION_LABEL, type ClarificationCode } from '../domain/enums.ts';
-import { Capability, assertCan, assertCanViewTask } from '../domain/permissions.ts';
+import { CLARIFICATION_LABEL, type ClarificationCode } from '../domain/enums.ts';
+import { Capability, assertCan, assertCanViewTask, seesAllWork } from '../domain/permissions.ts';
 import { notFound } from '../lib/errors.ts';
 import { todayDate } from '../lib/dates.ts';
 import { toTaskViews } from './task.service.ts';
@@ -37,7 +37,7 @@ export function clarificationQueue(
   actor: Actor,
   now = new Date(),
 ): ClarificationQueue {
-  const scope = actor.role === Role.Manager ? {} : { participantId: actor.id };
+  const scope = seesAllWork(actor.role) ? {} : { participantId: actor.id };
   const tasks = toTaskViews(
     db,
     taskRepo.listTasks(db, { ...scope, needsClarification: true }),

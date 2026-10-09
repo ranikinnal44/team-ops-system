@@ -15,6 +15,8 @@
 import type { Database } from '../db/connection.ts';
 import { transaction } from '../db/connection.ts';
 import * as userRepo from '../repositories/user.repo.ts';
+import { hashPasscode } from '../lib/passcode.ts';
+import { seedPasscode } from './passcodes.ts';
 import * as hierarchyRepo from '../repositories/hierarchy.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import * as activityRepo from '../repositories/activity.repo.ts';
@@ -23,7 +25,6 @@ import { AUTODOCK_DATA, type AutoDockDataset } from './autodock-data.ts';
 import { importBuildTimeline, type TimelineImportReport } from './build-timeline-loader.ts';
 import { BUILD_TIMELINE } from './build-timeline-data.ts';
 import { mapSourceStatus } from './source-record.ts';
-import type { IsoDate } from '../lib/dates.ts';
 import { TaskStatus, HistoryKind, ClarificationCode, Origin, ScheduleState } from '../domain/enums.ts';
 import {  } from '../lib/dates.ts';
 import { formatTaskRef } from '../lib/ids.ts';
@@ -104,6 +105,8 @@ export function importAutoDock(
         email: person.email,
         role: person.role,
         title: person.title,
+        // Each person gets their own; the seed prints them at the end.
+        passcodeHash: hashPasscode(seedPasscode(person.email)),
       });
       userIds.set(person.key, user.id);
     }
@@ -127,27 +130,6 @@ export function importAutoDock(
 
     // --- historical daily task log (loaded only when asked for) ---------
     if (includeDailyLog) {
-      // The daily log states no plan dates at all — only the day each row was
-      // logged. Dates are mandatory, so a milestone inferred from those rows is
-      // dated by the work it groups: first logged day to last. A group with no
-      // rows of its own falls back to the range of the log itself.
-      const logged = dataset.tasks.map((t) => t.sourceDate).sort();
-      const logStart = logged[0]!;
-      const logEnd = logged[logged.length - 1]!;
-      const spans = new Map<string, { start: IsoDate; end: IsoDate }>();
-      for (const record of dataset.tasks) {
-        if (!record.milestoneKey) continue;
-        const span = spans.get(record.milestoneKey);
-        if (!span) {
-          spans.set(record.milestoneKey, { start: record.sourceDate, end: record.sourceDate });
-        } else {
-          if (record.sourceDate < span.start) span.start = record.sourceDate;
-          if (record.sourceDate > span.end) span.end = record.sourceDate;
-        }
-      }
-      const spanOf = (key: string): { start: IsoDate; end: IsoDate } =>
-        spans.get(key) ?? { start: logStart, end: logEnd };
-
       for (const ws of dataset.workstreams) {
         const workstream = hierarchyRepo.createWorkstream(db, {
           projectId: project.id,
@@ -162,17 +144,11 @@ export function importAutoDock(
         workstreamIds.set(ws.key, workstream.id);
 
         for (const ms of ws.milestones) {
-          const span = spanOf(ms.key);
           const milestone = hierarchyRepo.createMilestone(db, {
             workstreamId: workstream.id,
             name: ms.name,
             // The rationale is kept on the record so the grouping can be audited.
             description: `Derived during import: ${ms.rationale}`,
-            // Derived, not stated: no target date is claimed, but the span the
-            // logged rows occupy is a fact about the source.
-            targetDate: null,
-            startDate: span.start,
-            endDate: span.end,
           });
           milestoneIds.set(ms.key, milestone.id);
           report.milestonesCreated += 1;
@@ -181,9 +157,6 @@ export function importAutoDock(
             const deliverable = hierarchyRepo.createDeliverable(db, {
               milestoneId: milestone.id,
               name: d.name,
-              // The log dates no outcome of its own, so it is due by the end of
-              // the milestone that holds it.
-              dueDate: span.end,
             });
             deliverableIds.set(d.key, deliverable.id);
             report.deliverablesCreated += 1;

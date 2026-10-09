@@ -228,25 +228,22 @@ function workstreamCard(ws, render) {
   const taskCount = ws.totals.total;
 
   const msName = el('input', { type: 'text', placeholder: 'Final Design Validation', required: true });
-  const msStart = el('input', { type: 'date', required: true });
-  const msEnd = el('input', { type: 'date', required: true });
+  const msLabel = el('input', { type: 'text', placeholder: 'W1 - W2', maxlength: '40' });
   const addMilestone = inlineForm({
     label: '+ Add milestone',
     submitText: 'Add milestone',
     open: ws.milestones.length === 0,
     fields: [
       field('Name', msName),
-      el('div', { class: 'grid-2' },
-        field('Starts', msStart, 'Required.'),
-        field('Ends', msEnd, 'Required — used as the task deadline default.')),
+      field('Schedule', msLabel,
+        'Optional, and in the plan\'s own words — "W1 - W2", "Q1". A milestone carries no ' +
+        'dates: those are agreed on each task, by its owner and reviewer.'),
     ],
     onSubmit: async () => {
       await api.createMilestone({
         workstreamId: w.id,
         name: msName.value.trim(),
-        startDate: msStart.value,
-        endDate: msEnd.value,
-        targetDate: msEnd.value,
+        timelineLabel: msLabel.value.trim() || null,
       });
       await render();
     },
@@ -323,24 +320,44 @@ function workstreamCard(ws, render) {
 
 function milestoneRow(ms, render) {
   const m = ms.milestone;
-  const dates =
-    m.startDate && m.endDate
-      ? `${formatDate(m.startDate)} – ${formatDate(m.endDate)}`
-      : m.targetDate
-        ? `target ${formatDate(m.targetDate)}`
-        : 'no dates set';
+
+  const mName = el('input', { type: 'text', value: m.name, required: true });
+  const mLabel = el('input', {
+    type: 'text',
+    value: m.timelineLabel ?? '',
+    placeholder: 'W1 - W2',
+    maxlength: '40',
+  });
+  const editMilestone = inlineForm({
+    label: 'Edit',
+    submitText: 'Save',
+    savedMessage: 'Milestone updated',
+    fields: [
+      field('Name', mName),
+      field('Schedule', mLabel,
+        'Optional, and in the plan\'s own words. A milestone carries no dates: those are ' +
+        'agreed on each task, between its owner and its reviewer.'),
+    ],
+    onSubmit: async () => {
+      await api.updateMilestone(m.id, {
+        name: mName.value.trim(),
+        timelineLabel: mLabel.value.trim() || null,
+      });
+      await render();
+    },
+  });
 
   const dName = el('input', { type: 'text', placeholder: 'Signed-off drawing pack', required: true });
-  const dDue = el('input', { type: 'date', required: true });
+  const dDue = el('input', { type: 'date' });
   const addDeliverable = inlineForm({
     label: '+ Add deliverable',
     submitText: 'Add deliverable',
-    fields: [field('Name', dName), field('Due', dDue, 'Required — a deliverable is a dated outcome.')],
+    fields: [field('Name', dName), field('Due', dDue, 'Optional — only once a date is agreed.')],
     onSubmit: async () => {
       await api.createDeliverable({
         milestoneId: m.id,
         name: dName.value.trim(),
-        dueDate: dDue.value,
+        dueDate: dDue.value || null,
       });
       await render();
     },
@@ -353,8 +370,9 @@ function milestoneRow(ms, render) {
       'div',
       { class: 'plan-head' },
       el('strong', { text: m.name }),
-      m.timelineLabel ? el('span', { class: 'timeline-chip', text: m.timelineLabel }) : null,
-      el('span', { class: 'small muted', text: dates }),
+      m.timelineLabel
+        ? el('span', { class: 'timeline-chip', text: m.timelineLabel })
+        : el('span', { class: 'small muted', text: 'dates are set per task' }),
       el('span', { class: 'small muted', text: `${ms.totals.total} task(s)` }),
       el('span', { class: 'spacer' }),
       el('button', {
@@ -370,6 +388,6 @@ function milestoneRow(ms, render) {
       ? el('div', { class: 'small muted', style: 'margin:4px 0' },
           `Deliverables: ${ms.deliverables.map((d) => d.name).join(', ')}`)
       : null,
-    el('div', { class: 'row', style: 'gap:6px' }, addDeliverable),
+    el('div', { class: 'row', style: 'gap:6px' }, editMilestone, addDeliverable),
   );
 }

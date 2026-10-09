@@ -7,7 +7,9 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, normalize, extname, resolve } from 'node:path';
 import type { Database } from '../db/connection.ts';
-import { compile, matchRoute, readJsonBody, sendJson, sendError, bearerToken } from './http.ts';
+import {
+  compile, matchRoute, readJsonBody, sendJson, sendError, bearerToken, SECURITY_HEADERS,
+} from './http.ts';
 import type { Route, RequestContext } from './http.ts';
 import { authenticate } from '../services/auth.service.ts';
 import { assertCan } from '../domain/permissions.ts';
@@ -70,6 +72,7 @@ async function serveStatic(pathname: string, res: ServerResponse): Promise<void>
   res.writeHead(200, {
     'content-type': MIME[extname(filePath)] ?? 'application/octet-stream',
     'cache-control': 'no-cache',
+    ...SECURITY_HEADERS,
   });
   createReadStream(filePath).pipe(res);
 }

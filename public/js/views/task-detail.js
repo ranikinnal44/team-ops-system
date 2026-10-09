@@ -274,7 +274,12 @@ export async function taskDetailView(mount, params, taskId) {
               }
               save.disabled = true;
               try {
-                await api.updateTask(task.id, payload);
+                // What this screen was showing when the edit was made: the
+                // server rejects the write if somebody else moved first.
+                await api.updateTask(task.id, {
+                  ...payload,
+                  expectedLastUpdatedAt: task.lastUpdatedAt,
+                });
               } catch (error) {
                 errors.replaceChildren(errorBox(error));
                 save.disabled = false;
@@ -560,7 +565,7 @@ export async function taskDetailView(mount, params, taskId) {
           return;
         }
         try {
-          await api.updateTask(task.id, payload);
+          await api.updateTask(task.id, { ...payload, expectedLastUpdatedAt: task.lastUpdatedAt });
           toast('Task updated');
           taskDetailView(mount, params, taskId);
         } catch (error) {

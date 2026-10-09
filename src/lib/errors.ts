@@ -9,6 +9,7 @@ export const ErrorCode = {
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
   INVALID_TRANSITION: 'INVALID_STATUS_TRANSITION',
   INTERNAL: 'INTERNAL_ERROR',
 } as const;
@@ -21,6 +22,7 @@ const STATUS_BY_CODE: Record<ErrorCodeValue, number> = {
   [ErrorCode.FORBIDDEN]: 403,
   [ErrorCode.NOT_FOUND]: 404,
   [ErrorCode.CONFLICT]: 409,
+  [ErrorCode.TOO_MANY_REQUESTS]: 429,
   [ErrorCode.INVALID_TRANSITION]: 422,
   [ErrorCode.INTERNAL]: 500,
 };
@@ -57,6 +59,9 @@ export const unauthenticated = (message = 'Authentication required'): AppError =
   new AppError(ErrorCode.UNAUTHENTICATED, message);
 
 export const conflict = (message: string): AppError => new AppError(ErrorCode.CONFLICT, message);
+
+export const tooManyRequests = (message: string): AppError =>
+  new AppError(ErrorCode.TOO_MANY_REQUESTS, message);
 
 export const invalidTransition = (message: string): AppError =>
   new AppError(ErrorCode.INVALID_TRANSITION, message);

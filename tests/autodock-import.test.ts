@@ -497,7 +497,7 @@ describe('structure', () => {
     assert.ok(inferred.every((w) => /inferred/i.test(w.description ?? '')));
   });
 
-  test('every milestone from the plan carries its week range and dates', () => {
+  test('every milestone keeps the plan\'s week range and no calendar dates', () => {
     const planned = BUILD_TIMELINE.phases.flatMap((p) => p.milestones);
     for (const source of planned) {
       const stored = projects
@@ -505,9 +505,12 @@ describe('structure', () => {
         .flatMap((w) => projects.listMilestones(db, manager(), w.id))
         .find((m) => m.name === source.name);
       assert.ok(stored, `missing milestone ${source.name}`);
+      // The source's own wording survives; nothing is resolved into a date
+      // the plan never committed anyone to.
       assert.equal(stored.timelineLabel, source.timelineLabel);
-      assert.ok(stored.startDate !== null && stored.endDate !== null);
-      assert.ok(stored.startDate <= stored.endDate);
+      assert.ok(!('startDate' in stored), 'a milestone holds no calendar dates');
+      assert.ok(!('endDate' in stored));
+      assert.ok(!('targetDate' in stored));
     }
   });
 
@@ -533,10 +536,11 @@ describe('structure', () => {
       .flatMap((m) => projects.listDeliverables(db, manager(), m.id));
     const planned = all.filter((d) => d.sourceRef?.includes('-o'));
     assert.equal(planned.length, 13);
-    // Every deliverable is dated, because a dateless outcome cannot be stored.
-    assert.ok(planned.every((d) => d.dueDate !== null));
-    // The label still records only what the plan itself stated, so a derived
-    // date stays distinguishable from a stated one.
+    // No deliverable is dated: an outcome of an undated milestone has no
+    // calendar deadline until someone agrees one.
+    assert.ok(planned.every((d) => d.dueDate === null));
+    // The plan's own wording survives where it stated a week, so what the
+    // source said is still readable without becoming a commitment.
     const stated = planned.filter((d) => d.dueLabel !== null);
     assert.ok(stated.length > 0 && stated.length < planned.length);
     assert.ok(stated.every((d) => /^by W\d+$/.test(d.dueLabel ?? '')));

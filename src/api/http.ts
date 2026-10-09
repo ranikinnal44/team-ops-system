@@ -105,12 +105,29 @@ export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+/**
+ * Headers every response carries.
+ *
+ * The app renders through `textContent` and loads nothing from a CDN, so a
+ * strict CSP costs nothing and means one careless `innerHTML` later cannot be
+ * turned into stolen session tokens.
+ */
+export const SECURITY_HEADERS: Record<string, string> = {
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+};
+
 export function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload ?? null);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
+    ...SECURITY_HEADERS,
   });
   res.end(body);
 }
@@ -120,9 +137,31 @@ export function sendError(res: ServerResponse, error: unknown): void {
     sendJson(res, error.status, error.toJSON());
     return;
   }
-  const message = error instanceof Error ? error.message : 'Unexpected error';
+  // The detail stays in the server log. What goes back says nothing about the
+  // schema or the stack — an error message is not a place to publish either.
   console.error('[error]', error);
-  sendJson(res, 500, { error: { code: ErrorCode.INTERNAL, message, details: [] } });
+  sendJson(res, 500, {
+    error: {
+      code: ErrorCode.INTERNAL,
+      message: 'Something went wrong. The server log has the detail.',
+      details: [],
+    },
+  });
+}
+
+/**
+ * The caller's address, for the audit trail and the login throttle.
+ *
+ * `x-forwarded-for` is trusted because the intended deployment puts a TLS
+ * proxy in front on the same host. Exposed directly to a network, that header
+ * is caller-controlled and the throttle's per-address half can be sidestepped
+ * — the per-email half cannot, which is why there are two.
+ */
+export function clientIp(req: IncomingMessage): string | null {
+  const forwarded = req.headers['x-forwarded-for'];
+  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (first) return first.split(',')[0]?.trim() ?? null;
+  return req.socket.remoteAddress ?? null;
 }
 
 export function bearerToken(req: IncomingMessage): string | null {

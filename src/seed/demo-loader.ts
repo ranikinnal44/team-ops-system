@@ -9,6 +9,8 @@
 import type { Database } from '../db/connection.ts';
 import { transaction } from '../db/connection.ts';
 import * as userRepo from '../repositories/user.repo.ts';
+import { hashPasscode } from '../lib/passcode.ts';
+import { seedPasscode } from './passcodes.ts';
 import * as hierarchyRepo from '../repositories/hierarchy.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import * as activityRepo from '../repositories/activity.repo.ts';
@@ -158,6 +160,8 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
         email: demoUser.email,
         role: demoUser.role,
         title: demoUser.title,
+        // Each person gets their own; the seed prints them at the end.
+        passcodeHash: hashPasscode(seedPasscode(demoUser.email)),
       });
       resolved.users.set(demoUser.key, user.id);
     }
@@ -185,21 +189,18 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
           name: demoWorkstream.name,
         });
         for (const demoMilestone of demoWorkstream.milestones) {
-          const milestoneEnd = addDays(today, demoMilestone.targetInDays);
           const milestone = hierarchyRepo.createMilestone(db, {
             workstreamId: workstream.id,
             name: demoMilestone.name,
-            targetDate: milestoneEnd,
-            // Demo milestones run from today to their target.
-            startDate: today,
-            endDate: milestoneEnd,
+            // Milestones hold no dates; the demo data's `targetInDays` is left
+            // for the tasks under them, which is where dates live now.
+            timelineLabel: `~${demoMilestone.targetInDays} days out`,
           });
           resolved.milestones.set(demoMilestone.key, milestone.id);
           for (const demoDeliverable of demoMilestone.deliverables ?? []) {
             const deliverable = hierarchyRepo.createDeliverable(db, {
               milestoneId: milestone.id,
               name: demoDeliverable.name,
-              dueDate: milestoneEnd,
             });
             resolved.deliverables.set(demoDeliverable.key, deliverable.id);
           }

@@ -18,15 +18,37 @@ export function readSchema(): string {
   return readFileSync(SCHEMA_PATH, 'utf8');
 }
 
-/** Open a database and make sure the schema is present. */
-export function createDatabase(path: string = config.databasePath): Database {
+/**
+ * Open a database WITHOUT applying the schema.
+ *
+ * Needed by the migrator: `schema.sql` indexes columns that an older database
+ * has not got yet, so applying it first fails before anything can be migrated.
+ */
+export function openDatabase(path: string = config.databasePath): Database {
   if (path !== ':memory:') {
     mkdirSync(dirname(path), { recursive: true });
   }
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA journal_mode = WAL;');
-  db.exec(readSchema());
+  return db;
+}
+
+/** Open a database and make sure the schema is present. */
+export function createDatabase(path: string = config.databasePath): Database {
+  const db = openDatabase(path);
+  try {
+    db.exec(readSchema());
+  } catch (error) {
+    db.close();
+    // An existing database too old for the current schema fails here, on a
+    // column an index needs. Say what to run rather than leaking raw SQL.
+    throw new Error(
+      `This database does not match the current schema (${(error as Error).message}).\n` +
+        '  Bring it up to date in place, keeping your data:\n' +
+        '    npm run migrate',
+    );
+  }
   return db;
 }
 

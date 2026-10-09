@@ -42,6 +42,12 @@ export const PRIORITY_RANK: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3
 
 export const Role = {
   Manager: 'manager',
+  /**
+   * Confirms what other people commit to: the dates an owner proposes, the
+   * work they submit as done, and the extensions they ask for. Reviews only
+   * the tasks they are named on, and can see everything in order to find them.
+   */
+  Reviewer: 'reviewer',
   Employee: 'employee',
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];

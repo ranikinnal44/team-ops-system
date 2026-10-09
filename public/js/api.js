@@ -104,6 +104,7 @@ export const api = {
   team: (includeInactive) => request('GET', `/api/team${qs({ includeInactive })}`),
   addTeamMember: (payload) => request('POST', '/api/team', payload),
   updateTeamMember: (id, payload) => request('PATCH', `/api/team/${id}`, payload),
+  resetPasscode: (id, passcode) => request('POST', `/api/team/${id}/passcode`, { passcode }),
 
   projects: () => request('GET', '/api/projects'),
   project: (id) => request('GET', `/api/projects/${id}`),

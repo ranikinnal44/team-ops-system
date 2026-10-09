@@ -49,11 +49,12 @@ export type Milestone = {
   readonly workstreamId: string;
   readonly name: string;
   readonly description: string | null;
-  readonly targetDate: IsoDate | null;
-  /** Verbatim relative schedule from a plan, e.g. "W1 - W2". */
+  /**
+   * Verbatim relative schedule from a plan, e.g. "W1 - W2". A milestone holds
+   * no calendar dates: those are agreed per task, between its owner and its
+   * reviewer, once someone is accountable for the work.
+   */
   readonly timelineLabel: string | null;
-  readonly startDate: IsoDate | null;
-  readonly endDate: IsoDate | null;
   /** External constraints and risks, one per line — not task dependencies. */
   readonly longLeadItems: readonly string[];
   readonly sourceRef: string | null;

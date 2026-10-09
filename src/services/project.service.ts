@@ -8,7 +8,7 @@ import * as repo from '../repositories/hierarchy.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import * as userRepo from '../repositories/user.repo.ts';
 import type { Actor, Project, Workstream, Milestone, Deliverable, TaskView } from '../domain/types.ts';
-import { Role, TaskStatus } from '../domain/enums.ts';
+import { TaskStatus } from '../domain/enums.ts';
 import {
   Capability,
   assertCan,
@@ -16,10 +16,11 @@ import {
   canViewWorkstream,
   assertCanViewWorkstream,
   type WorkstreamScope,
+  seesAllWork,
 } from '../domain/permissions.ts';
 import { suggestCode } from '../lib/ids.ts';
 import { conflict, notFound, validationError } from '../lib/errors.ts';
-import { todayDate, type IsoDate } from '../lib/dates.ts';
+import { todayDate } from '../lib/dates.ts';
 import { toTaskViews } from './task.service.ts';
 
 const CODE_PATTERN = /^[A-Z0-9]{2,8}$/;
@@ -68,26 +69,19 @@ export function createMilestone(
     workstreamId: string;
     name: string;
     description?: string | null;
-    targetDate?: IsoDate | null;
-    // Required: everything planned underneath a milestone sits inside its span.
-    startDate: IsoDate;
-    endDate: IsoDate;
+    /** The plan's own relative wording, e.g. "W1 - W2". Never a calendar date. */
+    timelineLabel?: string | null;
   },
 ): Milestone {
   assertCan(actor.role, Capability.CreateMilestone);
   if (!repo.findWorkstreamById(db, input.workstreamId)) throw notFound('Workstream');
-  if (input.endDate < input.startDate) {
-    throw validationError('The milestone ends before it starts', [
-      { path: 'endDate', message: 'must be on or after the start date' },
-    ]);
-  }
   return repo.createMilestone(db, input);
 }
 
 export function createDeliverable(
   db: Database,
   actor: Actor,
-  input: { milestoneId: string; name: string; description?: string | null; dueDate: IsoDate },
+  input: { milestoneId: string; name: string; description?: string | null },
 ): Deliverable {
   assertCan(actor.role, Capability.CreateDeliverable);
   if (!repo.findMilestoneById(db, input.milestoneId)) throw notFound('Milestone');
@@ -205,7 +199,7 @@ export function getProjectTree(
     .filter((w) => canViewWorkstream(scope, w.id));
   if (visibleWorkstreams.length === 0 && scope.kind === 'some') throw notFound('Project');
 
-  const taskScope = actor.role === Role.Manager ? {} : { participantId: actor.id };
+  const taskScope = seesAllWork(actor.role) ? {} : { participantId: actor.id };
   const tasks = toTaskViews(
     db,
     taskRepo.listTasks(db, { projectId: project.id, ...taskScope }),
@@ -348,17 +342,7 @@ export function updateMilestone(
   patch: Parameters<typeof repo.updateMilestone>[2],
 ): Milestone {
   assertCan(actor.role, Capability.CreateMilestone);
-  const existing = repo.findMilestoneById(db, id);
-  if (!existing) throw notFound('Milestone');
-  // Checked against what is stored, not just against the patch: moving one end
-  // past the other is the same mistake whether or not both arrive together.
-  const start = patch.startDate ?? existing.startDate;
-  const end = patch.endDate ?? existing.endDate;
-  if (start !== null && end !== null && end < start) {
-    throw validationError('The milestone ends before it starts', [
-      { path: 'endDate', message: 'must be on or after the start date' },
-    ]);
-  }
+  if (!repo.findMilestoneById(db, id)) throw notFound('Milestone');
   repo.updateMilestone(db, id, patch);
   const updated = repo.findMilestoneById(db, id);
   if (!updated) throw notFound('Milestone');

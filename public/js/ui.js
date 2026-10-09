@@ -141,6 +141,10 @@ export const addDays = (iso, days) => {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 };
 
+/** Display name for a role. One place, so a new role is never mislabelled. */
+export const roleLabel = (role) =>
+  ({ manager: 'Manager', reviewer: 'Reviewer', employee: 'Employee' })[role] ?? 'Employee';
+
 export const initials = (name) =>
   (name ?? '?')
     .split(/\s+/)

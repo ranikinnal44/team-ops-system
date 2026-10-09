@@ -47,10 +47,33 @@ const MANAGER_CAPABILITIES: readonly Capability[] = [
 
 const EMPLOYEE_CAPABILITIES: readonly Capability[] = [Capability.RequestDeadlineChange];
 
+/**
+ * A reviewer decides, they do not plan: no creating structure or tasks, no
+ * reassignment, no team management. They see every task because they cannot
+ * review what they cannot find, and they may own work of their own, which is
+ * why they keep the right to ask for an extension like anyone else.
+ */
+const REVIEWER_CAPABILITIES: readonly Capability[] = [
+  Capability.ViewAllTasks,
+  Capability.ViewTeamProgress,
+  Capability.DecideDeadlineRequest,
+  Capability.RequestDeadlineChange,
+];
+
 export const CAPABILITIES_BY_ROLE: Record<Role, readonly Capability[]> = {
   [Role.Manager]: MANAGER_CAPABILITIES,
+  [Role.Reviewer]: REVIEWER_CAPABILITIES,
   [Role.Employee]: EMPLOYEE_CAPABILITIES,
 };
+
+/**
+ * Whether a role sees the whole board rather than only its own work.
+ *
+ * Read-only breadth, nothing more: a reviewer has to be able to find what is
+ * waiting on them, which is not the same as being able to change it.
+ */
+export const seesAllWork = (role: Role): boolean =>
+  role === Role.Manager || role === Role.Reviewer;
 
 export const can = (role: Role, capability: Capability): boolean =>
   CAPABILITIES_BY_ROLE[role].includes(capability);
@@ -96,6 +119,10 @@ export type TaskField = (typeof MANAGER_WRITABLE_TASK_FIELDS)[number];
 
 export const WRITABLE_TASK_FIELDS_BY_ROLE: Record<Role, readonly TaskField[]> = {
   [Role.Manager]: MANAGER_WRITABLE_TASK_FIELDS,
+  // A reviewer writes no more than an employee does. Their authority is
+  // exercised through the decisions — schedule, review, extension — not by
+  // editing the task underneath whoever owns it.
+  [Role.Reviewer]: EMPLOYEE_WRITABLE_TASK_FIELDS,
   [Role.Employee]: EMPLOYEE_WRITABLE_TASK_FIELDS,
 };
 
@@ -140,7 +167,7 @@ export const isParticipant = (task: TaskParticipants, userId: string): boolean =
   task.supportingMemberIds.includes(userId);
 
 export const canViewTask = (role: Role, task: TaskParticipants, userId: string): boolean =>
-  role === Role.Manager || isParticipant(task, userId);
+  seesAllWork(role) || isParticipant(task, userId);
 
 export function assertCanViewTask(role: Role, task: TaskParticipants, userId: string): void {
   if (!canViewTask(role, task, userId)) {
@@ -188,7 +215,7 @@ export const workstreamScope = (ids: Iterable<string>): WorkstreamScope => ({
 
 /** The scope a role implies, given the workstreams the user participates in. */
 export const scopeForRole = (role: Role, participantWorkstreamIds: Iterable<string>): WorkstreamScope =>
-  role === Role.Manager ? ALL_WORKSTREAMS : workstreamScope(participantWorkstreamIds);
+  seesAllWork(role) ? ALL_WORKSTREAMS : workstreamScope(participantWorkstreamIds);
 
 export const canViewWorkstream = (scope: WorkstreamScope, workstreamId: string): boolean =>
   scope.kind === 'all' || scope.ids.has(workstreamId);

@@ -8,6 +8,7 @@ import * as team from '../src/services/team.service.ts';
 import * as userRepo from '../src/repositories/user.repo.ts';
 import * as taskRepo from '../src/repositories/task.repo.ts';
 import { Role, TaskStatus } from '../src/domain/enums.ts';
+import { seedPasscode } from '../src/seed/passcodes.ts';
 
 describe('team service', () => {
   let db: Database;
@@ -22,6 +23,7 @@ describe('team service', () => {
       email: 'Priya.Raman@Example.com',
       role: Role.Employee,
       title: 'Controls Engineer',
+      passcode: 'test-passcode',
     });
 
     assert.equal(created.name, 'Priya Raman');
@@ -41,6 +43,7 @@ describe('team service', () => {
           name: 'Nobody',
           email: 'nobody@example.com',
           role: Role.Employee,
+          passcode: 'test-passcode',
         }),
       /not permitted/i,
     );
@@ -54,6 +57,7 @@ describe('team service', () => {
           name: 'Impostor',
           email: existing.email.toUpperCase(),
           role: Role.Employee,
+          passcode: 'test-passcode',
         }),
       /already on the team/i,
     );
@@ -66,6 +70,7 @@ describe('team service', () => {
           name: 'Bad Email',
           email: 'not-an-email',
           role: Role.Employee,
+          passcode: 'test-passcode',
         }),
       /valid email/i,
     );
@@ -76,6 +81,7 @@ describe('team service', () => {
       name: 'Temp Name',
       email: 'edit.me@example.com',
       role: Role.Employee,
+      passcode: 'test-passcode',
     });
 
     const updated = team.updateTeamMember(db, manager(db), added.id, {
@@ -95,6 +101,7 @@ describe('team service', () => {
       name: 'Short Stay',
       email: 'short.stay@example.com',
       role: Role.Employee,
+      passcode: 'test-passcode',
     });
 
     const off = team.updateTeamMember(db, manager(db), added.id, { active: false });
@@ -143,6 +150,7 @@ describe('team service', () => {
       name: 'Deputy',
       email: 'deputy@example.com',
       role: Role.Manager,
+      passcode: 'test-passcode',
     });
     const demoted = team.updateTeamMember(db, boss, boss.id, { role: Role.Employee });
     assert.equal(demoted.role, Role.Employee);
@@ -155,6 +163,7 @@ describe('team service', () => {
       name: 'Deputy',
       email: 'deputy@example.com',
       role: Role.Manager,
+      passcode: 'test-passcode',
     });
     assert.throws(
       () => team.updateTeamMember(db, boss, boss.id, { active: false }),
@@ -180,6 +189,7 @@ describe('team service', () => {
       name: 'Gone',
       email: 'gone@example.com',
       role: Role.Employee,
+      passcode: 'test-passcode',
     });
     team.updateTeamMember(db, manager(db), added.id, { active: false });
 
@@ -216,6 +226,7 @@ describe('team API', () => {
       body: {
         name: 'Nisha Patel',
         email: 'nisha.patel@example.com',
+        passcode: seedPasscode('nisha.patel@example.com'),
         role: 'employee',
         title: 'Test Engineer',
       },
@@ -230,7 +241,7 @@ describe('team API', () => {
   test('an employee is refused when adding a member', async () => {
     const { status, body } = await server.request('POST', '/api/team', {
       token: employeeToken,
-      body: { name: 'No One', email: 'no.one@example.com', role: 'employee' },
+      body: { name: 'No One', email: 'no.one@example.com', role: 'employee', passcode: seedPasscode('no.one@example.com') },
     });
     assert.equal(status, 403);
     assert.equal(body.error.code, 'FORBIDDEN');
@@ -239,7 +250,7 @@ describe('team API', () => {
   test('an unknown role fails validation', async () => {
     const { status, body } = await server.request('POST', '/api/team', {
       token: managerToken,
-      body: { name: 'Odd Role', email: 'odd.role@example.com', role: 'admin' },
+      body: { name: 'Odd Role', email: 'odd.role@example.com', role: 'admin', passcode: seedPasscode('odd.role@example.com') },
     });
     assert.equal(status, 400);
     assert.equal(body.error.code, 'VALIDATION_ERROR');
@@ -249,7 +260,7 @@ describe('team API', () => {
   test('a duplicate email is a conflict', async () => {
     const { status, body } = await server.request('POST', '/api/team', {
       token: managerToken,
-      body: { name: 'Clash', email: 'demo.manager@example.com', role: 'employee' },
+      body: { name: 'Clash', email: 'demo.manager@example.com', role: 'employee', passcode: seedPasscode('demo.manager@example.com') },
     });
     assert.equal(status, 409);
     assert.equal(body.error.code, 'CONFLICT');
@@ -266,7 +277,7 @@ describe('team API', () => {
   test('a manager patches a designation and the roster reflects it', async () => {
     const created = await server.request('POST', '/api/team', {
       token: managerToken,
-      body: { name: 'Arun Kumar', email: 'arun.kumar@example.com', role: 'employee' },
+      body: { name: 'Arun Kumar', email: 'arun.kumar@example.com', role: 'employee', passcode: seedPasscode('arun.kumar@example.com') },
     });
     const id = created.body.id as string;
 

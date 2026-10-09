@@ -21,19 +21,20 @@ const task = {
 };
 
 describe('capabilities', () => {
+  // Planning the work: only a manager shapes the plan or decides who does what.
   const managerOnly = [
     Capability.CreateProject,
     Capability.CreateMilestone,
     Capability.CreateTask,
-    Capability.ViewAllTasks,
     Capability.ReassignTask,
-    Capability.DecideDeadlineRequest,
-    Capability.ViewTeamProgress,
+    Capability.ManageTeam,
+    Capability.BulkAssignTasks,
   ];
 
   for (const capability of managerOnly) {
     test(`${capability} is manager-only`, () => {
       assert.ok(can(Role.Manager, capability));
+      assert.ok(!can(Role.Reviewer, capability), 'a reviewer decides, it does not plan');
       assert.ok(!can(Role.Employee, capability));
       assert.throws(
         () => assertCan(Role.Employee, capability),
@@ -42,8 +43,39 @@ describe('capabilities', () => {
     });
   }
 
+  // Judging the work: a reviewer needs the same reach as a manager, because
+  // they cannot confirm what they cannot see.
+  const managerAndReviewer = [
+    Capability.ViewAllTasks,
+    Capability.ViewTeamProgress,
+    Capability.DecideDeadlineRequest,
+  ];
+
+  for (const capability of managerAndReviewer) {
+    test(`${capability} belongs to managers and reviewers`, () => {
+      assert.ok(can(Role.Manager, capability));
+      assert.ok(can(Role.Reviewer, capability));
+      assert.ok(!can(Role.Employee, capability));
+    });
+  }
+
   test('employees may ask for a deadline change', () => {
     assert.ok(can(Role.Employee, Capability.RequestDeadlineChange));
+  });
+
+  test('so may a reviewer, who can own work of their own', () => {
+    assert.ok(can(Role.Reviewer, Capability.RequestDeadlineChange));
+  });
+
+  test('a reviewer writes no more of a task than an employee does', () => {
+    // Their authority is the decisions, not editing the work underneath
+    // whoever owns it.
+    for (const field of ['ownerId', 'priority', 'dueDate', 'effortDays', 'title'] as const) {
+      assert.ok(!canWriteTaskField(Role.Reviewer, field), `${field} is not a reviewer's to set`);
+    }
+    for (const field of ['status', 'progress', 'blocker'] as const) {
+      assert.ok(canWriteTaskField(Role.Reviewer, field));
+    }
   });
 });
 

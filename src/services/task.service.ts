@@ -48,6 +48,7 @@ import {
   assertCanUpdateTask,
   assertCanWriteTaskFields,
   type TaskField,
+  seesAllWork,
 } from '../domain/permissions.ts';
 import { evaluateTask, attentionScore, type RuleThresholds } from '../domain/exceptions.ts';
 import {
@@ -67,6 +68,7 @@ import {
   workingDaysInclusive,
   formatDateHuman,
   type IsoDate,
+  type IsoTimestamp,
 } from '../lib/dates.ts';
 import { notFound, conflict, validationError, forbidden, type ErrorDetail } from '../lib/errors.ts';
 
@@ -170,7 +172,7 @@ export function listTasks(
   now = new Date(),
 ): TaskView[] {
   const scoped: taskRepo.TaskFilter =
-    actor.role === Role.Manager ? filter : { ...filter, participantId: actor.id };
+    seesAllWork(actor.role) ? filter : { ...filter, participantId: actor.id };
   return toTaskViews(db, taskRepo.listTasks(db, scoped), todayDate(now));
 }
 
@@ -413,6 +415,13 @@ function wouldCreateCycle(db: Database, taskId: string, dependencyIds: readonly 
 // --- updates --------------------------------------------------------------
 
 export type UpdateTaskInput = {
+  /**
+   * The `lastUpdatedAt` the caller was looking at when they decided to make
+   * this change. Supplied, it turns a silent overwrite into a 409; omitted,
+   * the write proceeds as before — which is what the bulk and import paths
+   * want, since they are not editing somebody's open screen.
+   */
+  expectedLastUpdatedAt?: IsoTimestamp;
   status?: TaskStatus;
   progress?: number;
   progressNote?: string | null;
@@ -427,6 +436,8 @@ export type UpdateTaskInput = {
   reviewerId?: string | null;
   supportingMemberIds?: readonly string[];
   priority?: Priority | null;
+  /** The manager's budget in working days. Raising it is a re-estimate. */
+  effortDays?: number;
   /** Movable, never clearable — see the create schema. */
   startDate?: IsoDate;
   dueDate?: IsoDate;
@@ -461,7 +472,22 @@ export function updateTask(
   if (!task) throw notFound('Task');
   assertCanUpdateTask(actor.role, task, actor.id);
 
-  const { comment, ...fields } = input;
+  const { comment, expectedLastUpdatedAt, ...fields } = input;
+
+  // Two people with the same task open: without this the second save silently
+  // erases the first, and nobody finds out until somebody asks where their
+  // change went. The history row names who got there first, so the message can
+  // say more than "try again".
+  if (expectedLastUpdatedAt !== undefined && expectedLastUpdatedAt !== task.lastUpdatedAt) {
+    // Newest first, so the head of the list is whoever got there before us.
+    const [latest] = activityRepo.listHistoryForTask(db, task.id);
+    const who = latest?.actorName ?? 'Somebody else';
+    throw conflict(
+      `${who} changed this task while you were editing it. ` +
+        'Reload to see their change, then reapply yours.',
+    );
+  }
+
   const touched = Object.keys(fields) as TaskField[];
   assertCanWriteTaskFields(actor.role, touched);
 
@@ -636,6 +662,41 @@ export function updateTask(
         ? (userRepo.findUserById(db, fields.reviewerId)?.name ?? fields.reviewerId)
         : null,
     });
+    // Naming someone to sign the work off answers the question; clearing the
+    // reviewer again does not, so only a non-null value resolves it.
+    if (fields.reviewerId !== null) resolvedCodes.push(ClarificationCode.MissingReviewer);
+  }
+
+  if (fields.effortDays !== undefined && fields.effortDays !== task.effortDays) {
+    const effortDays = normaliseEffortDays(fields.effortDays, maxEffortDays());
+    // An agreed schedule already spends a known number of working days. Cutting
+    // the budget under that would leave the task in breach of itself, with the
+    // dates locked and no way to shorten them except an extension — which only
+    // ever lengthens. Refused rather than recorded.
+    if (task.scheduleState === ScheduleState.Locked && task.startDate && task.dueDate) {
+      const spent = workingDaysInclusive(task.startDate, task.dueDate);
+      if (effortDays < spent) {
+        throw conflict(
+          `These dates are agreed and already spend ${spent} working days, so the budget ` +
+            `cannot drop to ${effortDays}. Raise it, or leave the dates and the budget as they are.`,
+        );
+      }
+    }
+    patch.effortDays = effortDays;
+    // The first budget anyone sets is the original estimate, and it is never
+    // written again — that is what makes later slippage measurable.
+    if (task.originalEffortDays === null) patch.originalEffortDays = effortDays;
+    record({
+      kind: HistoryKind.EffortChanged,
+      field: 'effortDays',
+      fromValue: task.effortDays === null ? 'not set' : `${task.effortDays} working days`,
+      toValue: `${effortDays} working days`,
+      note:
+        task.originalEffortDays === null
+          ? null
+          : `Original estimate: ${task.originalEffortDays} working days.`,
+    });
+    resolvedCodes.push(ClarificationCode.MissingEffortDays);
   }
 
   if (fields.priority !== undefined && fields.priority !== task.priority) {
@@ -962,7 +1023,7 @@ export function listActivityFeed(
   actor: Actor,
   limit = 60,
 ): (TaskHistoryEntry & { taskRef: string; taskTitle: string })[] {
-  return actor.role === Role.Manager
+  return seesAllWork(actor.role)
     ? activityRepo.listRecentHistory(db, { limit })
     : activityRepo.listRecentHistory(db, { limit, participantId: actor.id });
 }
@@ -1062,6 +1123,15 @@ export function decideDeadlineChange(
   if (!request) throw notFound('Deadline change request');
   if (request.status !== DeadlineRequestStatus.Pending) {
     throw conflict('This request has already been decided.');
+  }
+  // A reviewer decides the tasks they were named on, and only those: the
+  // authority follows the accountability. A manager answers for the whole
+  // plan, so theirs is not narrowed.
+  if (actor.role === Role.Reviewer) {
+    const subject = taskRepo.findTaskById(db, request.taskId);
+    if (!subject || subject.reviewerId !== actor.id) {
+      throw forbidden('You can only decide requests on tasks you are the reviewer of.');
+    }
   }
 
   return transaction(db, () => {
@@ -1168,7 +1238,8 @@ export function listDeadlineRequests(
   actor: Actor,
   opts: { status?: DeadlineRequestStatus } = {},
 ): DeadlineChangeRequest[] {
-  if (actor.role === Role.Manager) {
+  // A reviewer has to see the queue to work it, not just their own asks.
+  if (seesAllWork(actor.role)) {
     return deadlineRepo.listDeadlineRequests(db, opts);
   }
   return deadlineRepo.listDeadlineRequests(db, { ...opts, requestedById: actor.id });

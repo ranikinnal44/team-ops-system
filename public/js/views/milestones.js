@@ -65,7 +65,10 @@ export function deliverableList(deliverables) {
         el('span', { text: d.name }),
         d.dueDate
           ? el('span', { class: 'due muted', text: `${d.dueLabel ?? ''} · ${formatDate(d.dueDate)}` })
-          : null,
+          : d.dueLabel
+            // The plan's wording, where no calendar date has been agreed.
+            ? el('span', { class: 'due muted', text: d.dueLabel })
+            : null,
       ),
     ),
   );
@@ -107,19 +110,15 @@ function phaseOf(tasks, totals) {
   return { key: 'queued', label: 'Not started' };
 }
 
-/** The date a milestone sorts by; plans that gave no date sort last. */
-const scheduleKey = (milestone) =>
-  milestone?.startDate ?? milestone?.targetDate ?? milestone?.endDate ?? null;
-
-/** "Oct 5 – Oct 16, 2026", or the single date a plan committed to. */
-function whenLabel(milestone) {
-  if (milestone.startDate && milestone.endDate) {
-    return `${formatDate(milestone.startDate)} – ${formatDate(milestone.endDate)}`;
-  }
-  if (milestone.targetDate) return `target ${formatDate(milestone.targetDate)}`;
-  if (milestone.endDate) return `by ${formatDate(milestone.endDate)}`;
-  return null;
-}
+/**
+ * What a milestone sorts by. It holds no dates of its own, so the earliest
+ * start among its tasks stands in — the work is what gives a milestone a place
+ * in the calendar. A milestone whose tasks are all unscheduled sorts last.
+ */
+const scheduleKey = (milestone, tasks = []) => {
+  const dated = tasks.map((t) => t.startDate ?? t.dueDate).filter(Boolean).sort();
+  return dated[0] ?? null;
+};
 
 /**
  * One flat, date-ordered list out of the project tree.
@@ -154,8 +153,8 @@ function toEntries(tree) {
   return entries.sort((a, b) => {
     // The unplaced buckets are not on the schedule, so they sit at the end.
     if ((a.milestone === null) !== (b.milestone === null)) return a.milestone === null ? 1 : -1;
-    const da = scheduleKey(a.milestone);
-    const db = scheduleKey(b.milestone);
+    const da = scheduleKey(a.milestone, a.tasks);
+    const db = scheduleKey(b.milestone, b.tasks);
     if (da !== db) {
       if (da === null) return 1;
       if (db === null) return -1;
@@ -213,7 +212,7 @@ function sectionHead(section) {
         alertChip(totals.gaps, totals.gaps === 1 ? 'gap' : 'gaps', 'quiet'),
       ),
       el('span', { class: 'ms-count', text: `${totals.completed}/${totals.total}` }),
-      el('span', { class: 'ms-bar' }, progressBar(totals.total === 0 ? null : totals.percent)),
+      el('span', { class: 'ms-bar section' }, progressBar(totals.total === 0 ? null : totals.percent)),
       el('span', { class: 'ms-pct', text: totals.total === 0 ? '—' : `${totals.percent}%` }),
     ),
   );
@@ -222,7 +221,6 @@ function sectionHead(section) {
 /** The collapsed line: name, where it sits, when it runs, how far along it is. */
 function summaryLine(entry, totals, phase) {
   const { milestone, workstream } = entry;
-  const when = milestone ? whenLabel(milestone) : null;
 
   return el(
     'summary',
@@ -236,10 +234,15 @@ function summaryLine(entry, totals, phase) {
         'span',
         { class: 'ms-tags' },
         el('span', { class: 'ws-chip', title: workstream.name, text: workstream.code }),
+        // The plan's own schedule, verbatim — "W1 - W2". A milestone holds no
+        // calendar dates, so this is the only thing it can say about when.
         milestone?.timelineLabel
-          ? el('span', { class: 'timeline-chip', text: milestone.timelineLabel })
+          ? el('span', {
+              class: 'timeline-chip',
+              title: 'Schedule as the plan states it',
+              text: milestone.timelineLabel,
+            })
           : null,
-        when ? el('span', { class: 'ms-when', text: when }) : null,
       ),
     ),
     el(
@@ -254,7 +257,11 @@ function summaryLine(entry, totals, phase) {
       ),
       el('span', { class: `ms-phase ${phase.key}`, text: phase.label }),
       el('span', { class: 'ms-count', text: `${totals.completed}/${totals.total}` }),
-      el('span', { class: 'ms-bar' }, progressBar(totals.total === 0 ? null : totals.percent)),
+      el(
+        'span',
+        { class: `ms-bar ${phase.key}`, title: `${totals.completed} of ${totals.total} tasks complete` },
+        progressBar(totals.total === 0 ? null : totals.percent),
+      ),
       el('span', { class: 'ms-pct', text: totals.total === 0 ? '—' : `${totals.percent}%` }),
     ),
   );

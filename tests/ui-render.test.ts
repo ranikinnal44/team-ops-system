@@ -13,7 +13,7 @@ import {
   autoDockDb, autoDockWithLogDb, freshDb, startTestServer, type TestServer,
 } from './helpers.ts';
 import { installDom, installFetch, StubElement, type DomHandle } from './dom-stub.ts';
-import { config } from '../src/config/index.ts';
+import { seedPasscode } from '../src/seed/passcodes.ts';
 
 // Built at runtime so the loader, not TypeScript, resolves the plain-JS modules.
 const moduleUrl = (path: string): string => new URL(`../public/js/${path}`, import.meta.url).href;
@@ -102,7 +102,7 @@ async function fire(node: StubElement, event: string, payload: object = {}): Pro
 }
 
 const signIn = async (email: string): Promise<void> => {
-  const result = await api.api.login(email, config.authPasscode);
+  const result = await api.api.login(email, seedPasscode(email));
   api.session.save(result.token, result.user);
 };
 
@@ -571,15 +571,40 @@ describe('views render against real AutoDock data', () => {
     assert.match(node.text(), /AutoDock/);
   });
 
-  test('the plan shows week ranges, long lead items and deliverables', async () => {
+  test('the plan shows long lead items and deliverables', async () => {
     await signIn('rani@example.com');
     const node = mount();
     await views.milestones.milestonesView(node, new URLSearchParams());
     const text = node.text();
-    assert.match(text, /W1 - W2/, 'milestone week ranges must be visible');
     assert.match(text, /Long lead items/);
     assert.match(text, /VFD procurement/);
     assert.match(text, /Outcomes and deliverables/);
+  });
+
+  test('a milestone shows the plan\'s week range next to its progress', async () => {
+    await signIn('rani@example.com');
+    const node = mount();
+    await views.milestones.milestonesView(node, new URLSearchParams());
+
+    // The relative week range is the plan's own wording, and with milestones
+    // holding no calendar dates it is the only thing one can say about when.
+    assert.ok(
+      findByClass(node, 'timeline-chip').length > 0,
+      'the plan states a week range for its milestones, so the screen shows it',
+    );
+    // Still no calendar date: a milestone has none to render.
+    assert.equal(findByClass(node, 'ms-when').length, 0);
+
+    // Alongside it: a bar, a percentage and a completion status per row.
+    const bars = findByClass(node, 'ms-bar');
+    const phases = findByClass(node, 'ms-phase');
+    assert.ok(bars.length > 0, 'every milestone shows a progress bar');
+    assert.equal(phases.length, bars.length, 'and a completion status beside it');
+    assert.ok(
+      phases.some((p) => /Complete|In progress|Not started|No tasks/.test(p.text())),
+      'the status says where the milestone stands',
+    );
+    assert.ok(findByClass(node, 'ms-pct').length > 0, 'with the percentage spelled out');
   });
 
   test('grouping by workstream gives each stream a heading and its own roll-up', async () => {
@@ -608,7 +633,7 @@ describe('views render against real AutoDock data', () => {
     const text = node.text();
     assert.match(text, /Milestones/);
     assert.match(text, /Final Design Validation/);
-    assert.match(text, /W1 - W2/, 'the plan\u2019s week range belongs on the collapsed line');
+    assert.match(text, /\d+%/, 'the collapsed line carries progress, not a week range');
 
     const panels = findAll(node, 'details');
     const tree = await api.api.project((await api.api.projects())[0].id);
@@ -922,12 +947,14 @@ describe('views render against real AutoDock data', () => {
     await views.team.teamView(node);
 
     const form = findAll(node, 'form')[0]!;
-    const [name, email, title] = findAll(form, 'input');
+    const [name, email, title, passcode] = findAll(form, 'input');
     const [role] = findAll(form, 'select');
     name!.value = 'Sunita Rao';
     email!.value = 'sunita.rao@example.com';
     role!.value = 'employee';
     title!.value = 'Safety Engineer';
+    // Every member now arrives with their own passcode; the form asks for it.
+    passcode!.value = 'sunita-first-code';
 
     await fire(form, 'submit');
 
@@ -935,6 +962,11 @@ describe('views render against real AutoDock data', () => {
     assert.match(text, /Sunita Rao/, 'the roster re-renders with the new member');
     assert.match(text, /Safety Engineer/);
     assert.match(text, /sunita\.rao@example\.com/);
+    assert.ok(!text.includes('sunita-first-code'), 'a passcode is never rendered back');
+
+    // And it is the credential that signs them in.
+    const signedIn = await api.api.login('sunita.rao@example.com', 'sunita-first-code');
+    assert.ok(signedIn.token);
   });
 
   test('pressing Edit opens an inline editor for that member only', async () => {
@@ -972,7 +1004,7 @@ describe('views render against the demo dataset too', () => {
   });
 
   test('manager dashboard renders with dated, prioritised tasks', async () => {
-    const result = await api.api.login('demo.manager@example.com', config.authPasscode);
+    const result = await api.api.login('demo.manager@example.com', seedPasscode('demo.manager@example.com'));
     api.session.save(result.token, result.user);
     const node = mount();
     await views.manager.managerView(node);
@@ -982,7 +1014,7 @@ describe('views render against the demo dataset too', () => {
   });
 
   test('employee dashboard renders', async () => {
-    const result = await api.api.login('demo.employee1@example.com', config.authPasscode);
+    const result = await api.api.login('demo.employee1@example.com', seedPasscode('demo.employee1@example.com'));
     api.session.save(result.token, result.user);
     const node = mount();
     await views.employee.employeeView(node, new URLSearchParams());
@@ -990,7 +1022,7 @@ describe('views render against the demo dataset too', () => {
   });
 
   test('task detail lists the outcome for each day of a multi-day task', async () => {
-    const result = await api.api.login('demo.manager@example.com', config.authPasscode);
+    const result = await api.api.login('demo.manager@example.com', seedPasscode('demo.manager@example.com'));
     api.session.save(result.token, result.user);
     const all = await api.api.tasks();
     const multiDay = all.find((t: { dayPlans: unknown[] }) => t.dayPlans.length > 1);
@@ -1006,7 +1038,7 @@ describe('views render against the demo dataset too', () => {
   });
 
   test('a single-day task says so rather than showing an empty day plan', async () => {
-    const result = await api.api.login('demo.manager@example.com', config.authPasscode);
+    const result = await api.api.login('demo.manager@example.com', seedPasscode('demo.manager@example.com'));
     api.session.save(result.token, result.user);
     const all = await api.api.tasks();
     const oneDay = all.find(
@@ -1067,7 +1099,7 @@ describe('the live Stream 1 project renders', () => {
 
   test('an employee board is empty, and says so rather than breaking', async () => {
     // Nobody owns anything in the plan yet, so this is the honest state.
-    const r = await api.api.login('faizan@example.com', config.authPasscode);
+    const r = await api.api.login('faizan@example.com', seedPasscode('faizan@example.com'));
     api.session.save(r.token, r.user);
     const node = mount();
     await views.employee.employeeView(node, new URLSearchParams());
@@ -1075,11 +1107,11 @@ describe('the live Stream 1 project renders', () => {
     await signIn('rani@example.com');
   });
 
-  test('the plan shows its week ranges', async () => {
+  test('the plan shows progress and long lead items', async () => {
     const node = mount();
     await views.milestones.milestonesView(node, new URLSearchParams());
     const text = node.text();
-    assert.match(text, /W1 - W2/);
+    assert.ok(findByClass(node, 'ms-bar').length > 0, 'progress is shown as a bar');
     assert.match(text, /Long lead items/);
   });
 
@@ -1165,7 +1197,7 @@ describe('screens stay readable when there is nothing to report', () => {
   });
 
   test('an employee with nothing assigned gets one empty state, not nine', async () => {
-    const r = await api.api.login('faizan@example.com', config.authPasscode);
+    const r = await api.api.login('faizan@example.com', seedPasscode('faizan@example.com'));
     api.session.save(r.token, r.user);
     const node = mount();
     await views.employee.employeeView(node, new URLSearchParams());
@@ -1204,7 +1236,7 @@ describe('bulk assignment', () => {
   });
 
   test('an employee gets none — bulk assignment is a manager action', async () => {
-    const r = await api.api.login('faizan@example.com', config.authPasscode);
+    const r = await api.api.login('faizan@example.com', seedPasscode('faizan@example.com'));
     api.session.save(r.token, r.user);
     const node = mount();
     await views.taskList.taskListView(node, new URLSearchParams());

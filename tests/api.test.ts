@@ -383,25 +383,27 @@ describe('dates at the API boundary', () => {
     taskId = tasks.body[0].id;
   });
 
-  const pathsOf = (body: { error: { details: { path: string }[] } }): string[] =>
-    body.error.details.map((d) => d.path);
-
-  test('a milestone cannot be created without a start and an end', async () => {
+  test('a milestone is created without dates, because it has none to give', async () => {
     const { status, body } = await server.request('POST', '/api/milestones', {
       token: managerToken,
-      body: { workstreamId, name: 'Undated milestone' },
+      body: { workstreamId, name: 'Undated milestone', timelineLabel: 'W1 - W2' },
     });
-    assert.equal(status, 400);
-    assert.deepEqual(pathsOf(body).sort(), ['endDate', 'startDate']);
+    assert.equal(status, 201);
+    assert.equal(body.timelineLabel, 'W1 - W2');
+    for (const field of ['startDate', 'endDate', 'targetDate']) {
+      assert.ok(!(field in body), `a milestone must not carry ${field}`);
+    }
   });
 
-  test('a deliverable cannot be created without a due date', async () => {
+  test('a deliverable needs no due date either', async () => {
     const { status, body } = await server.request('POST', '/api/deliverables', {
       token: managerToken,
       body: { milestoneId, name: 'Undated outcome' },
     });
-    assert.equal(status, 400);
-    assert.ok(pathsOf(body).includes('dueDate'));
+    assert.equal(status, 201);
+    assert.equal(body.dueDate, null);
+    // The plan's own wording is still accepted, it just is not a date.
+    assert.equal(body.dueLabel, null);
   });
 
   test('an agreed schedule cannot be patched, even by a manager', async () => {
@@ -480,13 +482,20 @@ describe('dates at the API boundary', () => {
     assert.equal(started.status, 200, 'agreed dates unlock the work');
   });
 
-  test('a milestone span cannot be cleared either', async () => {
+  test('a date sent to a milestone is dropped, not stored', async () => {
     const { status, body } = await server.request('PATCH', `/api/milestones/${milestoneId}`, {
       token: managerToken,
-      body: { startDate: null },
+      body: { timelineLabel: 'W3 - W4', startDate: '2026-10-05', endDate: '2026-10-16' },
     });
-    assert.equal(status, 400);
-    assert.ok(pathsOf(body).includes('startDate'));
+    assert.equal(status, 200);
+    assert.equal(body.timelineLabel, 'W3 - W4');
+    assert.ok(!('startDate' in body), 'the date is not part of a milestone');
+
+    const reread = await server.request('GET', `/api/milestones?workstreamId=${workstreamId}`, {
+      token: managerToken,
+    });
+    const stored = reread.body.find((m: { id: string }) => m.id === milestoneId);
+    assert.ok(!('startDate' in stored) && !('endDate' in stored));
   });
 });
 

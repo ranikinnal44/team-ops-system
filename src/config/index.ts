@@ -45,8 +45,25 @@ export type AppConfig = {
   readonly port: number;
   readonly host: string;
   readonly databasePath: string;
-  readonly authPasscode: string;
+  /**
+   * The code that authorises JOINING — bootstrapping the first manager on an
+   * empty system. Signing in uses each person's own passcode, not this.
+   */
+  readonly joinCode: string;
   readonly sessionTtlHours: number;
+  /**
+   * Paths to a TLS certificate and key. Both set, the server speaks HTTPS and
+   * nothing crosses the network in the clear; neither set, it speaks HTTP and
+   * says so loudly at startup.
+   */
+  readonly tls: { readonly certPath: string | null; readonly keyPath: string | null };
+  readonly auth: {
+    /** Failed attempts for one email before it is locked for the window. */
+    readonly maxFailuresPerEmail: number;
+    /** Failed attempts from one address before it is locked for the window. */
+    readonly maxFailuresPerIp: number;
+    readonly lockoutMinutes: number;
+  };
   readonly rules: {
     readonly dueSoonDays: number;
     readonly noUpdateWorkingDays: number;
@@ -74,8 +91,17 @@ export function loadConfig(): AppConfig {
     port: int('PORT', 4000),
     host: str('HOST', '127.0.0.1'),
     databasePath: dbPath === ':memory:' ? dbPath : resolve(PROJECT_ROOT, dbPath),
-    authPasscode: str('AUTH_PASSCODE', 'demo1234'),
+    joinCode: str('AUTH_JOIN_CODE', str('AUTH_PASSCODE', 'demo1234')),
     sessionTtlHours: int('SESSION_TTL_HOURS', 12),
+    tls: {
+      certPath: str('TLS_CERT_PATH', '') || null,
+      keyPath: str('TLS_KEY_PATH', '') || null,
+    },
+    auth: {
+      maxFailuresPerEmail: int('AUTH_MAX_FAILURES_PER_EMAIL', 5),
+      maxFailuresPerIp: int('AUTH_MAX_FAILURES_PER_IP', 20),
+      lockoutMinutes: int('AUTH_LOCKOUT_MINUTES', 15),
+    },
     rules: {
       dueSoonDays: int('DUE_SOON_DAYS', 2),
       noUpdateWorkingDays: int('NO_UPDATE_WORKING_DAYS', 2),

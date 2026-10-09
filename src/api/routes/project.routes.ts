@@ -23,10 +23,6 @@ const patchWorkstreamSchema = object({
 const patchMilestoneSchema = object({
   name: optional(str({ max: 160 })),
   description: optional(nullable(str({ max: 2000 }))),
-  targetDate: optional(nullable(isoDate())),
-  // Movable, never clearable.
-  startDate: optional(isoDate()),
-  endDate: optional(isoDate()),
   timelineLabel: optional(nullable(str({ max: 40 }))),
   longLeadItems: optional(arrayOf(str({ max: 300 }), { max: 40 })),
 });
@@ -35,7 +31,7 @@ const patchDeliverableSchema = object({
   name: optional(str({ max: 160 })),
   description: optional(nullable(str({ max: 2000 }))),
   dueLabel: optional(nullable(str({ max: 40 }))),
-  dueDate: optional(isoDate()),
+  dueDate: optional(nullable(isoDate())),
   critical: optional(bool()),
 });
 
@@ -57,10 +53,9 @@ const milestoneSchema = object({
   workstreamId: str({ max: 64 }),
   name: str({ max: 160 }),
   description: optional(nullable(str({ max: 2000 }))),
-  targetDate: optional(nullable(isoDate())),
-  // Required: the work underneath a milestone inherits its span.
-  startDate: isoDate(),
-  endDate: isoDate(),
+  // A milestone carries no calendar dates: only the plan's own relative
+  // wording, e.g. "W1 - W2". Dates are agreed per task, by its owner and
+  // reviewer, once someone is accountable for the work.
   timelineLabel: optional(nullable(str({ max: 40 }))),
   longLeadItems: optional(arrayOf(str({ max: 300 }), { max: 40 })),
 });
@@ -70,8 +65,9 @@ const deliverableSchema = object({
   name: str({ max: 160 }),
   description: optional(nullable(str({ max: 2000 }))),
   dueLabel: optional(nullable(str({ max: 40 }))),
-  // Required: a deliverable is a dated outcome, so the date is the record.
-  dueDate: isoDate(),
+  // Optional, like its milestone's: an outcome is dated only once a real
+  // deadline has been agreed, not because the plan mentioned a week.
+  dueDate: optional(nullable(isoDate())),
   critical: optional(bool()),
 });
 

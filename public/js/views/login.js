@@ -1,6 +1,6 @@
 /** Screen 1 — Login / user selection. */
 import { api, session } from '../api.js';
-import { el, card, field, errorBox, initials, toast } from '../ui.js';
+import { el, card, field, errorBox, initials, roleLabel, toast } from '../ui.js';
 
 export async function loginView(mount) {
   const state = await api.authState().catch(() => ({ needsBootstrap: false }));
@@ -14,7 +14,9 @@ export async function loginView(mount) {
   const users = await api.selectableUsers();
   let selected = users.find((u) => u.role === 'manager') ?? users[0];
 
-  const passcode = el('input', { type: 'password', value: 'demo1234', autocomplete: 'current-password' });
+  // No prefill: each person has their own passcode now, so there is no single
+  // value that would be right.
+  const passcode = el('input', { type: 'password', autocomplete: 'current-password', required: true });
   const errors = el('div');
   const submit = el('button', { class: 'primary', type: 'submit', text: 'Sign in' });
 
@@ -37,7 +39,7 @@ export async function loginView(mount) {
             'span',
             {},
             el('div', { class: 'nm', text: user.name }),
-            el('div', { class: 'rl', text: `${user.role === 'manager' ? 'Manager' : 'Employee'} · ${user.title ?? ''}` }),
+            el('div', { class: 'rl', text: `${roleLabel(user.role)} · ${user.title ?? ''}` }),
           ),
         ),
       ),
@@ -56,7 +58,7 @@ export async function loginView(mount) {
           const result = await api.login(selected.email, passcode.value);
           session.save(result.token, result.user);
           toast(`Signed in as ${result.user.name}`);
-          location.hash = result.user.role === 'manager' ? '#/manager' : '#/my-work';
+          location.hash = result.user.role === 'employee' ? '#/my-work' : '#/manager';
         } catch (error) {
           errors.replaceChildren(errorBox(error));
         } finally {
@@ -96,7 +98,10 @@ async function bootstrapView(mount) {
   const name = el('input', { type: 'text', placeholder: 'Your name', required: true });
   const email = el('input', { type: 'email', placeholder: 'you@example.com', required: true });
   const title = el('input', { type: 'text', placeholder: 'Engineering Manager' });
-  const passcode = el('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const joinCode = el('input', { type: 'password', autocomplete: 'one-time-code', required: true });
+  const passcode = el('input', {
+    type: 'password', autocomplete: 'new-password', required: true, minlength: '6',
+  });
   const errors = el('div');
   const submit = el('button', { class: 'primary', type: 'submit', text: 'Create manager and sign in' });
 
@@ -112,6 +117,7 @@ async function bootstrapView(mount) {
             name: name.value.trim(),
             email: email.value.trim(),
             title: title.value.trim() || null,
+            joinCode: joinCode.value,
             passcode: passcode.value,
           });
           session.save(result.token, result.user);
@@ -127,7 +133,9 @@ async function bootstrapView(mount) {
     field('Your name', name),
     field('Email', email, 'Used to sign in. It is not emailed anywhere.'),
     field('Title', title, 'Optional.'),
-    field('Passcode', passcode, 'The shared passcode from AUTH_PASSCODE in .env'),
+    field('Join code', joinCode, 'AUTH_JOIN_CODE in .env — it only authorises this first account.'),
+    field('Your passcode', passcode,
+      'Yours alone, at least 6 characters. Everyone you add afterwards gets their own.'),
     el('div', { class: 'row' }, submit),
   );
 

@@ -103,15 +103,15 @@ export function importBuildTimeline(
     report.phases += 1;
 
     for (const milestone of phase.milestones) {
+      // Resolved for the TASKS below, which the plan does date and which
+      // therefore arrive with their schedule already agreed. The milestone
+      // itself takes none of it: it keeps the source's relative wording only.
       const span = weeks.span(milestone.startWeek, milestone.endWeek);
       const created = hierarchyRepo.createMilestone(db, {
         workstreamId: workstream.id,
         name: milestone.name,
         description: `From the build timeline (${milestone.timelineLabel}).`,
-        targetDate: span.dueDate,
         timelineLabel: milestone.timelineLabel,
-        startDate: span.startDate,
-        endDate: span.dueDate,
         longLeadItems: milestone.longLeadItems.map((item) =>
           item.critical ? `${item.text} [critical]` : item.text,
         ),
@@ -130,12 +130,10 @@ export function importBuildTimeline(
         const deliverable = hierarchyRepo.createDeliverable(db, {
           milestoneId: created.id,
           name: outcome.name,
-          // `dueLabel` still records whether the plan dated it in its own words.
+          // The plan's own wording where it dates an outcome, e.g. "by W1". No
+          // calendar date is derived from it: an outcome is dated only once a
+          // real deadline is agreed, which this document does not do.
           dueLabel: dueWeek === null ? null : `by W${dueWeek}`,
-          // A deliverable must carry a date. Where the plan states one it wins;
-          // otherwise the outcome is due by the end of the milestone that owns
-          // it, which is the weakest claim that is still true.
-          dueDate: dueWeek === null ? span.dueDate : weeks.endOf(dueWeek),
           critical: outcome.critical ?? false,
           sourceRef: outcome.key,
         });
@@ -231,11 +229,20 @@ export function importBuildTimeline(
     }
   }
 
+  // Read from the source document rather than from the stored deliverable: an
+  // outcome carries no date now, but the plan still states one in its own
+  // wording ("VFD order release by W1 end"), and a supply order needs a real
+  // date to be chaseable at all.
   const outcomeDue = (key: string): IsoDate | null => {
-    const row = db
-      .prepare('SELECT due_date FROM deliverables WHERE source_ref = ?')
-      .get(key) as { due_date: string | null } | undefined;
-    return row?.due_date ?? null;
+    for (const phase of dataset.phases) {
+      for (const milestone of phase.milestones) {
+        const outcome = milestone.outcomes.find((o) => o.key === key);
+        if (!outcome) continue;
+        const week = parseDueWeek(outcome.name);
+        return week === null ? null : weeks.endOf(week);
+      }
+    }
+    return null;
   };
 
   for (const spec of dataset.supply) {

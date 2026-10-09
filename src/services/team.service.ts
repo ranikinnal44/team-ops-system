@@ -16,8 +16,10 @@ import * as userRepo from '../repositories/user.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import type { Actor, User } from '../domain/types.ts';
 import { Role, TaskStatus } from '../domain/enums.ts';
-import { Capability, assertCan } from '../domain/permissions.ts';
+import { Capability, assertCan, seesAllWork } from '../domain/permissions.ts';
 import { conflict, notFound, validationError } from '../lib/errors.ts';
+import { hashPasscode, passcodeProblem } from '../lib/passcode.ts';
+import * as authEventRepo from '../repositories/auth-event.repo.ts';
 
 /**
  * A roster entry. `openTasks` is only populated for a manager: an employee may
@@ -36,6 +38,8 @@ export type NewTeamMember = {
   email: string;
   role: Role;
   title?: string | null;
+  /** Their own passcode, set by whoever adds them and changeable later. */
+  passcode: string;
 };
 
 export type TeamMemberPatch = {
@@ -63,10 +67,13 @@ export function listTeam(
   opts: { includeInactive?: boolean } = {},
 ): TeamMember[] {
   const isManager = actor.role === Role.Manager;
+  // Deactivated people are a management concern; the load figures are not —
+  // a reviewer needs to see who is carrying what to judge an extension.
+  const seesLoad = seesAllWork(actor.role);
   const users = userRepo.listUsers(db, { activeOnly: !(isManager && opts.includeInactive) });
 
-  const open = isManager ? openTaskCounts(db) : null;
-  const total = isManager ? taskRepo.countTasksByOwner(db) : null;
+  const open = seesLoad ? openTaskCounts(db) : null;
+  const total = seesLoad ? taskRepo.countTasksByOwner(db) : null;
 
   return users.map((user) => ({
     ...user,
@@ -88,12 +95,48 @@ export function addTeamMember(db: Database, actor: Actor, input: NewTeamMember):
     throw conflict(`${email} is already on the team.`);
   }
 
+  const problem = passcodeProblem(input.passcode);
+  if (problem) {
+    throw validationError('That passcode cannot be used', [{ path: 'passcode', message: problem }]);
+  }
+
   return userRepo.createUser(db, {
     name: input.name.trim(),
     email,
     role: input.role,
     title: input.title?.trim() || null,
+    passcodeHash: hashPasscode(input.passcode),
   });
+}
+
+/**
+ * Give somebody a new passcode.
+ *
+ * A manager can reset anyone's, which is how a forgotten one is recovered —
+ * there is no email round trip here. Nobody can read an existing passcode
+ * back, including the manager doing the reset: only replace it.
+ */
+export function resetPasscode(db: Database, actor: Actor, userId: string, passcode: string): User {
+  assertCan(actor.role, Capability.ManageTeam);
+  const user = userRepo.findUserById(db, userId);
+  if (!user) throw notFound('User');
+
+  const problem = passcodeProblem(passcode);
+  if (problem) {
+    throw validationError('That passcode cannot be used', [{ path: 'passcode', message: problem }]);
+  }
+  userRepo.setPasscodeHash(db, user.id, hashPasscode(passcode));
+  // Every session issued under the old passcode dies with it. Resetting
+  // somebody's code because it leaked is pointless if whoever has it stays
+  // signed in until the token expires.
+  const ended = userRepo.deleteSessionsForUser(db, user.id);
+  authEventRepo.record(db, {
+    kind: authEventRepo.AuthEventKind.PasscodeReset,
+    email: user.email,
+    userId: user.id,
+    detail: `reset by ${actor.name}; ${ended} session(s) ended`,
+  });
+  return user;
 }
 
 export function updateTeamMember(
@@ -119,6 +162,19 @@ export function updateTeamMember(
       ]);
     }
     assertNoOpenWork(db, user);
+  }
+
+  // A role is carried in the session's actor on every request, so a change to
+  // it only takes effect once the holder signs in again. Ending their sessions
+  // is what makes "you are no longer a manager" true immediately.
+  if (patch.role !== undefined && patch.role !== user.role) {
+    const ended = userRepo.deleteSessionsForUser(db, user.id);
+    authEventRepo.record(db, {
+      kind: authEventRepo.AuthEventKind.RoleChange,
+      email: user.email,
+      userId: user.id,
+      detail: `${user.role} → ${patch.role} by ${actor.name}; ${ended} session(s) ended`,
+    });
   }
 
   userRepo.updateUser(db, userId, {

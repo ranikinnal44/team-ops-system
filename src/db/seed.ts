@@ -17,6 +17,8 @@
 import type { Database } from './connection.ts';
 import { createDatabase, transaction } from './connection.ts';
 import { config } from '../config/index.ts';
+import * as userRepo from '../repositories/user.repo.ts';
+import { seedPasscode } from '../seed/passcodes.ts';
 import { nowTimestamp } from '../lib/dates.ts';
 import {
   DATASETS,
@@ -111,6 +113,24 @@ function printCounts(db: Database): void {
   console.log(`  ${counts}`);
 }
 
+/**
+ * Who to sign in as, and with what.
+ *
+ * Each seeded user has their own passcode now, so the one line that used to
+ * say "the passcode is demo1234" would be wrong. These are demo credentials in
+ * a demo dataset — printed because nothing can read them back afterwards.
+ */
+function printCredentials(db: Database): void {
+  const users = userRepo.listUsers(db, { activeOnly: true });
+  if (users.length === 0) return;
+  console.log('\n  ── Sign in as ──────────────────────────────────────────────');
+  for (const user of users) {
+    const who = `${user.name} (${user.role})`;
+    console.log(`     ${who.padEnd(34)} ${user.email.padEnd(28)} ${seedPasscode(user.email)}`);
+  }
+  console.log('     Each person has their own; a manager can reset any of them.');
+}
+
 function printTimeline(report: NonNullable<ImportReport['timeline']>): void {
   console.log(`\n  ── Build timeline — ${report.sourceDocument}`);
   console.log(`     W1 anchored to ${report.weekAnchor} (AUTODOCK_W1_START)`);
@@ -183,6 +203,7 @@ if (import.meta.filename === process.argv[1]) {
     console.log(`  ${DATASETS[dataset].label}`);
     printCounts(db);
     if (report) printImportReport(report);
+    printCredentials(db);
     console.log(`\n  Database: ${config.databasePath}`);
   }
   db.close();

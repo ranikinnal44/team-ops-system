@@ -1014,7 +1014,22 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
-.ms-bar { width: 86px; }
+.ms-bar { width: 132px; }
+.ms-bar .progress-track { height: 9px; }
+
+/* The bar carries the phase, so colour and meaning arrive together instead of
+   the reader having to pair a grey bar with a chip at the far right. */
+.ms-bar.done .progress-fill   { background: var(--ok); }
+.ms-bar.active .progress-fill { background: var(--info); }
+.ms-bar.queued .progress-fill { background: var(--muted-soft); }
+.ms-bar.empty .progress-track { opacity: 0.45; }
+
+/* A finished milestone reads as finished at a glance, without counting. */
+.ms-item.done .ms-pct { color: var(--ok); }
+
+/* The section roll-up sits above its milestones, so it stays the quieter of
+   the two: same width, flatter weight. */
+.ms-bar.section .progress-track { height: 7px; }
 .ms-pct {
   width: 34px;
   text-align: right;
@@ -1072,9 +1087,11 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 760px) {
   /* The name and the numbers survive; the schedule text is in the body. */
-  .ms-when, .ms-phase { display: none; }
+  /* The count goes before the status does: "3/7" is recoverable from the bar
+     and the percentage, but "Complete" is not. */
+  .ms-count { display: none; }
   .ms-metrics { gap: 8px; }
-  .ms-bar { width: 60px; }
+  .ms-bar { width: 72px; }
 }
 
 /* --- quiet states --------------------------------------------------------
@@ -1237,3 +1254,4 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   border-radius: var(--radius-sm);
 }
 .inline-form-body .field { margin-bottom: 10px; }
+

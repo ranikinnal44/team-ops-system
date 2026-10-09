@@ -147,10 +147,7 @@ type MilestoneRow = {
   workstream_id: string;
   name: string;
   description: string | null;
-  target_date: string | null;
   timeline_label: string | null;
-  start_date: string | null;
-  end_date: string | null;
   long_lead_items: string | null;
   source_ref: string | null;
   created_at: string;
@@ -161,10 +158,7 @@ const mapMilestone = (row: MilestoneRow): Milestone => ({
   workstreamId: row.workstream_id,
   name: row.name,
   description: toText(row.description),
-  targetDate: toText(row.target_date),
   timelineLabel: toText(row.timeline_label),
-  startDate: toText(row.start_date),
-  endDate: toText(row.end_date),
   // Stored one per line; empty string means none rather than one blank item.
   longLeadItems: (row.long_lead_items ?? '').split('\n').filter(Boolean),
   sourceRef: toText(row.source_ref),
@@ -175,10 +169,7 @@ export type NewMilestone = {
   workstreamId: string;
   name: string;
   description?: string | null;
-  targetDate?: IsoDate | null;
   timelineLabel?: string | null;
-  startDate: IsoDate;
-  endDate: IsoDate;
   longLeadItems?: readonly string[];
   sourceRef?: string | null;
 };
@@ -189,28 +180,22 @@ export function createMilestone(db: Database, input: NewMilestone): Milestone {
     workstreamId: input.workstreamId,
     name: input.name,
     description: input.description ?? null,
-    targetDate: input.targetDate ?? null,
     timelineLabel: input.timelineLabel ?? null,
-    startDate: input.startDate,
-    endDate: input.endDate,
     longLeadItems: input.longLeadItems ?? [],
     sourceRef: input.sourceRef ?? null,
     createdAt: nowTimestamp(),
   };
   db.prepare(
     `INSERT INTO milestones
-       (id, workstream_id, name, description, target_date,
-        timeline_label, start_date, end_date, long_lead_items, source_ref, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, workstream_id, name, description,
+        timeline_label, long_lead_items, source_ref, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     milestone.id,
     milestone.workstreamId,
     milestone.name,
     milestone.description,
-    milestone.targetDate,
     milestone.timelineLabel,
-    milestone.startDate,
-    milestone.endDate,
     milestone.longLeadItems.join('\n'),
     milestone.sourceRef,
     milestone.createdAt,
@@ -231,12 +216,12 @@ export function listMilestones(db: Database, workstreamId?: string): Milestone[]
       ? db
           .prepare(
             `SELECT * FROM milestones WHERE workstream_id = ?
-             ORDER BY (start_date IS NULL), start_date, target_date, name`,
+             ORDER BY created_at, name`,
           )
           .all(workstreamId)
       : db
           .prepare(
-            'SELECT * FROM milestones ORDER BY (start_date IS NULL), start_date, target_date, name',
+            'SELECT * FROM milestones ORDER BY created_at, name',
           )
           .all()
   ) as MilestoneRow[];
@@ -348,7 +333,7 @@ export type NewDeliverable = {
   name: string;
   description?: string | null;
   dueLabel?: string | null;
-  dueDate: IsoDate;
+  dueDate?: IsoDate | null;
   critical?: boolean;
   sourceRef?: string | null;
 };
@@ -360,7 +345,7 @@ export function createDeliverable(db: Database, input: NewDeliverable): Delivera
     name: input.name,
     description: input.description ?? null,
     dueLabel: input.dueLabel ?? null,
-    dueDate: input.dueDate,
+    dueDate: input.dueDate ?? null,
     critical: input.critical ?? false,
     sourceRef: input.sourceRef ?? null,
     createdAt: nowTimestamp(),
@@ -450,9 +435,6 @@ export function updateMilestone(
   patch: {
     name?: string;
     description?: string | null;
-    targetDate?: IsoDate | null;
-    startDate?: IsoDate;
-    endDate?: IsoDate;
     timelineLabel?: string | null;
     longLeadItems?: readonly string[];
   },
@@ -461,9 +443,6 @@ export function updateMilestone(
   const columns: Record<string, string> = {
     name: 'name',
     description: 'description',
-    targetDate: 'target_date',
-    startDate: 'start_date',
-    endDate: 'end_date',
     timelineLabel: 'timeline_label',
   };
   const normalised: Record<string, unknown> = { ...rest };
@@ -481,7 +460,7 @@ export function updateDeliverable(
     name?: string;
     description?: string | null;
     dueLabel?: string | null;
-    dueDate?: IsoDate;
+    dueDate?: IsoDate | null;
     critical?: boolean;
   },
 ): void {

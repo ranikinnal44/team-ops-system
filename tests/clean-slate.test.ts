@@ -17,13 +17,14 @@ import * as taskRepo from '../src/repositories/task.repo.ts';
 import { config } from '../src/config/index.ts';
 import { AppError, ErrorCode } from '../src/lib/errors.ts';
 import type { Actor } from '../src/domain/types.ts';
+import type { Role } from '../src/domain/enums.ts';
 
 let db: Database;
 beforeEach(() => {
   db = createDatabase(':memory:');
 });
 
-const actorOf = (user: { id: string; name: string; role: 'manager' | 'employee' }): Actor => ({
+const actorOf = (user: { id: string; name: string; role: Role }): Actor => ({
   id: user.id,
   name: user.name,
   role: user.role,
@@ -37,7 +38,7 @@ describe('an empty system can be opened at all', () => {
 
   test('nobody can sign in, which is why bootstrap exists', () => {
     assert.throws(
-      () => auth.login(db, 'anyone@example.com', config.authPasscode),
+      () => auth.login(db, 'anyone@example.com', config.joinCode),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.UNAUTHENTICATED,
     );
   });
@@ -46,20 +47,22 @@ describe('an empty system can be opened at all', () => {
     const result = auth.bootstrapFirstManager(db, {
       name: 'Rani',
       email: 'rani@example.com',
-      passcode: config.authPasscode,
+      joinCode: config.joinCode,
+      passcode: 'rani-secret',
     });
     assert.equal(result.user.role, 'manager');
     assert.ok(result.session.token);
     assert.ok(!auth.needsBootstrap(db));
   });
 
-  test('it still demands the passcode — an open port is no easier to walk into', () => {
+  test('it still demands the join code — an open port is no easier to walk into', () => {
     assert.throws(
       () =>
         auth.bootstrapFirstManager(db, {
           name: 'Intruder',
           email: 'x@example.com',
-          passcode: 'wrong',
+          joinCode: 'wrong',
+          passcode: 'long-enough-passcode',
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.UNAUTHENTICATED,
     );
@@ -70,14 +73,16 @@ describe('an empty system can be opened at all', () => {
     auth.bootstrapFirstManager(db, {
       name: 'Rani',
       email: 'rani@example.com',
-      passcode: config.authPasscode,
+      joinCode: config.joinCode,
+      passcode: 'rani-secret',
     });
     assert.throws(
       () =>
         auth.bootstrapFirstManager(db, {
           name: 'Second',
           email: 'second@example.com',
-          passcode: config.authPasscode,
+          joinCode: config.joinCode,
+          passcode: 'something-long-enough',
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.CONFLICT,
     );
@@ -91,7 +96,8 @@ describe('building a project from nothing', () => {
       auth.bootstrapFirstManager(db, {
         name: 'Rani',
         email: 'rani@example.com',
-        passcode: config.authPasscode,
+        joinCode: config.joinCode,
+          passcode: 'something-long-enough',
       }).user,
     );
   });
@@ -106,8 +112,6 @@ describe('building a project from nothing', () => {
     const milestone = projects.createMilestone(db, manager, {
       workstreamId: workstream.id,
       name: 'Final Design Validation',
-      startDate: '2026-10-05',
-      endDate: '2026-10-16',
     });
     const task = tasks.createTask(db, manager, {
       workstreamId: workstream.id,
@@ -151,6 +155,7 @@ describe('building a project from nothing', () => {
       name: 'Second Manager',
       email: 'second@example.com',
       role: 'manager',
+      passcode: 'second-manager-code',
     });
     const asSecond = actorOf(second);
     const project = projects.createProject(db, asSecond, { name: 'AutoDock', code: 'AD' });
@@ -169,6 +174,7 @@ describe('building a project from nothing', () => {
         name: 'Firaz',
         email: 'firaz@example.com',
         role: 'employee',
+        passcode: 'firaz-code',
       }),
     );
     assert.throws(
@@ -189,7 +195,8 @@ describe('structure can be corrected, not just created', () => {
       auth.bootstrapFirstManager(db, {
         name: 'Rani',
         email: 'rani@example.com',
-        passcode: config.authPasscode,
+        joinCode: config.joinCode,
+          passcode: 'something-long-enough',
       }).user,
     );
     projectId = projects.createProject(db, manager, { name: 'AutoDock', code: 'AD' }).id;
@@ -201,8 +208,6 @@ describe('structure can be corrected, not just created', () => {
     milestoneId = projects.createMilestone(db, manager, {
       workstreamId,
       name: 'Final Desgin Validation',
-      startDate: '2026-10-05',
-      endDate: '2026-10-16',
     }).id;
   });
 
@@ -213,25 +218,21 @@ describe('structure can be corrected, not just created', () => {
     assert.equal(fixed.name, 'Mechanical Design');
   });
 
-  test('a milestone can be renamed and dated after the fact', () => {
+  test('a milestone can be renamed after the fact', () => {
     const fixed = projects.updateMilestone(db, manager, milestoneId, {
       name: 'Final Design Validation',
-      startDate: '2026-10-12',
-      endDate: '2026-10-23',
     });
     assert.equal(fixed.name, 'Final Design Validation');
-    assert.equal(fixed.startDate, '2026-10-12');
   });
 
-  test('a milestone that ends before it starts is refused', () => {
-    assert.throws(
-      () =>
-        projects.updateMilestone(db, manager, milestoneId, {
-          startDate: '2026-10-23',
-          endDate: '2026-10-12',
-        }),
-      (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
-    );
+  test('a milestone keeps the plan\'s own wording rather than a date', () => {
+    const labelled = projects.updateMilestone(db, manager, milestoneId, {
+      timelineLabel: 'W1 - W2',
+    });
+    assert.equal(labelled.timelineLabel, 'W1 - W2');
+    // There is no date on a milestone to set, correct or contradict.
+    assert.ok(!('startDate' in labelled));
+    assert.ok(!('endDate' in labelled));
   });
 
   test('an empty milestone can be deleted', () => {

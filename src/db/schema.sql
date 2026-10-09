@@ -12,9 +12,13 @@ CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
   name        TEXT    NOT NULL,
   email       TEXT    NOT NULL UNIQUE,
-  role        TEXT    NOT NULL CHECK (role IN ('manager', 'employee')),
+  role        TEXT    NOT NULL CHECK (role IN ('manager', 'reviewer', 'employee')),
   title       TEXT,
   active      INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  -- Each person's own passcode, as a scrypt hash with its own salt. Nullable
+  -- only so an account can exist before one is set; a NULL cannot sign in.
+  passcode_hash    TEXT,
+  passcode_set_at  TEXT,
   created_at  TEXT    NOT NULL
 );
 
@@ -25,6 +29,26 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- Who got in, who failed, and whose credentials changed. Also the throttle's
+-- memory: failures are counted from here, so restarting the server does not
+-- hand an attacker a fresh allowance.
+CREATE TABLE IF NOT EXISTS auth_events (
+  id         TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL CHECK (kind IN (
+               'login_success', 'login_failure', 'throttled', 'logout',
+               'bootstrap', 'passcode_reset', 'role_change')),
+  -- The address that was TRIED. Kept even when it belongs to nobody, because
+  -- which addresses are being guessed is itself the signal.
+  email      TEXT,
+  user_id    TEXT REFERENCES users(id) ON DELETE SET NULL,
+  ip         TEXT,
+  detail     TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_events_email ON auth_events(email, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_events_ip    ON auth_events(ip, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_events_time  ON auth_events(created_at);
 
 CREATE TABLE IF NOT EXISTS projects (
   id          TEXT PRIMARY KEY,
@@ -52,22 +76,20 @@ CREATE TABLE IF NOT EXISTS milestones (
   workstream_id  TEXT NOT NULL REFERENCES workstreams(id) ON DELETE CASCADE,
   name           TEXT NOT NULL,
   description    TEXT,
-  target_date    TEXT,
-  -- Relative schedule from a plan, e.g. "W1 - W2", kept verbatim alongside the
-  -- calendar dates derived from it so the plan stays readable after re-anchoring.
+  -- A milestone carries NO calendar dates. Dates belong to tasks, and only once
+  -- someone is accountable for one: the owner proposes the days that spend
+  -- their effort budget and the reviewer agrees them. A date here would be a
+  -- commitment nobody made.
+  --
+  -- The plan's own relative schedule is kept verbatim, e.g. "W1 - W2". It is
+  -- the source's wording, not a calendar claim, and survives re-anchoring.
   timeline_label TEXT,
-  -- Required: a milestone with no span cannot be planned against, and the work
-  -- underneath it inherits its dates.
-  start_date     TEXT NOT NULL,
-  end_date       TEXT NOT NULL,
   -- Long-lead items and external dependencies, one per line. These are
   -- constraints and risks ("VFD procurement - 8 week", "Vendor delays"),
   -- not task-to-task dependencies, so they are not forced into that table.
   long_lead_items TEXT,
   source_ref     TEXT,
-  created_at     TEXT NOT NULL,
-
-  CHECK (end_date >= start_date)
+  created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_milestones_workstream ON milestones(workstream_id);
 
@@ -76,11 +98,12 @@ CREATE TABLE IF NOT EXISTS deliverables (
   milestone_id  TEXT NOT NULL REFERENCES milestones(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   description   TEXT,
-  -- An outcome the plan dates in its own right, e.g. "VFD order release by W1".
-  -- `due_label` keeps the source's own wording; `due_date` is required, and an
-  -- import with nothing stated falls back to the end of its milestone.
+  -- An outcome of its milestone, so it carries no date of its own either.
+  -- `due_label` keeps whatever the plan said, e.g. "by W1"; `due_date` is set
+  -- only where a real calendar deadline has been agreed, which for an imported
+  -- outcome is never.
   due_label     TEXT,
-  due_date      TEXT NOT NULL,
+  due_date      TEXT,
   -- Flagged in the source as a critical long-lead or risk item.
   critical      INTEGER NOT NULL DEFAULT 0 CHECK (critical IN (0, 1)),
   source_ref    TEXT,

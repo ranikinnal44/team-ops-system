@@ -5,7 +5,7 @@
  * the content area. No framework, no build step.
  */
 import { api, session } from './api.js';
-import { el, clear, initials, errorBox, toast } from './ui.js';
+import { el, clear, initials, roleLabel, errorBox, toast } from './ui.js';
 import { loginView } from './views/login.js';
 import { managerView } from './views/manager.js';
 import { employeeView } from './views/employee.js';
@@ -41,9 +41,12 @@ function parseHash() {
 function chrome(activePath) {
   const user = session.user;
   const isManager = user?.role === 'manager';
+  // A reviewer sees the whole board, so the dashboard is theirs too — they
+  // just cannot change the plan behind it.
+  const seesAll = isManager || user?.role === 'reviewer';
 
   const links = [
-    isManager ? { href: '#/manager', label: 'Dashboard' } : null,
+    seesAll ? { href: '#/manager', label: 'Dashboard' } : null,
     { href: '#/my-work', label: 'My work' },
     { href: '#/tasks', label: 'Tasks' },
     isManager ? { href: '#/plan', label: 'Plan' } : null,
@@ -78,7 +81,7 @@ function chrome(activePath) {
         { class: 'whoami' },
         el('span', { class: 'avatar', text: initials(user?.name) }),
         el('span', {}, el('div', { style: 'font-weight:600;color:var(--text)', text: user?.name ?? '' }),
-          el('div', { text: isManager ? 'Manager' : 'Employee' })),
+          el('div', { text: roleLabel(user?.role) })),
         el('button', {
           class: 'subtle',
           text: 'Sign out',
@@ -129,7 +132,7 @@ async function render() {
   }
 
   if (path === '/' || path === '') {
-    location.hash = session.user?.role === 'manager' ? '#/manager' : '#/my-work';
+    location.hash = session.user?.role === 'employee' ? '#/my-work' : '#/manager';
     return;
   }
 

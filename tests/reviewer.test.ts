@@ -11,9 +11,11 @@ import { freshDb, manager, employee1, employee2, employee3 } from './helpers.ts'
 import type { Database } from '../src/db/connection.ts';
 import * as tasks from '../src/services/task.service.ts';
 import * as projects from '../src/services/project.service.ts';
-import { TaskStatus } from '../src/domain/enums.ts';
+import * as team from '../src/services/team.service.ts';
+import { TaskStatus, Role } from '../src/domain/enums.ts';
+import type { Actor } from '../src/domain/types.ts';
 import { ErrorCode } from '../src/lib/errors.ts';
-import { todayDate } from '../src/lib/dates.ts';
+import { todayDate, addDays } from '../src/lib/dates.ts';
 
 const today = (): string => todayDate();
 
@@ -155,5 +157,78 @@ describe('work imported without a reviewer', () => {
     tasks.updateTask(db, manager(db), created.id, { reviewerId: employee2(db).id });
     const sent = tasks.updateTask(db, employee1(db), created.id, { status: TaskStatus.Review });
     assert.equal(sent.status, TaskStatus.Review);
+  });
+});
+
+/**
+ * The reviewer ROLE, as distinct from the per-task relationship above.
+ *
+ * It carries the authority to confirm what other people commit to, and the
+ * reach to find it — but only over the tasks it was named on, and nothing of
+ * the manager's power to plan the work in the first place.
+ */
+describe('the reviewer role', () => {
+  let db: Database;
+  let reviewer: Actor;
+
+  beforeEach(() => {
+    db = freshDb();
+    const added = team.addTeamMember(db, manager(db), {
+      name: 'Dana Reviewer',
+      email: 'dana.reviewer@example.com',
+      role: Role.Reviewer,
+      passcode: 'test-passcode',
+    });
+    reviewer = { id: added.id, name: added.name, role: added.role };
+  });
+
+  test('sees work it has no part in, so it can find what is waiting', () => {
+    const task = newTask(db);
+    const visible = tasks.listTasks(db, reviewer).map((t) => t.id);
+    assert.ok(visible.includes(task.id), 'a reviewer reads the whole board');
+  });
+
+  test('decides a deadline request on a task it reviews', () => {
+    const task = newTask(db, { reviewerId: reviewer.id });
+    assert.ok(task.dueDate);
+    const request = tasks.requestDeadlineChange(db, employee1(db), task.id, {
+      requestedDueDate: addDays(task.dueDate, 2),
+      reason: 'The rig is double-booked.',
+    });
+
+    const decided = tasks.decideDeadlineChange(db, reviewer, request.id, { approve: true });
+    assert.equal(decided.status, 'approved');
+    assert.equal(tasks.getTask(db, manager(db), task.id).dueDate, addDays(task.dueDate, 2));
+  });
+
+  test('is refused on a task somebody else reviews', () => {
+    // Named reviewer is employee2, not Dana.
+    const task = newTask(db);
+    assert.ok(task.dueDate);
+    const request = tasks.requestDeadlineChange(db, employee1(db), task.id, {
+      requestedDueDate: addDays(task.dueDate, 2),
+      reason: 'Same rig.',
+    });
+
+    assert.throws(
+      () => tasks.decideDeadlineChange(db, reviewer, request.id, { approve: true }),
+      (e: { code?: string }) => e.code === ErrorCode.FORBIDDEN,
+      'the authority follows the accountability',
+    );
+    assert.equal(tasks.getTask(db, manager(db), task.id).dueDate, task.dueDate);
+  });
+
+  test('cannot create the work it reviews', () => {
+    assert.throws(
+      () =>
+        tasks.createTask(db, reviewer, {
+          ...placement(db),
+          title: 'Something I made up',
+          effortDays: 1,
+          ownerId: employee1(db).id,
+          reviewerId: employee2(db).id,
+        } as Parameters<typeof tasks.createTask>[2]),
+      (e: { code?: string }) => e.code === ErrorCode.FORBIDDEN,
+    );
   });
 });

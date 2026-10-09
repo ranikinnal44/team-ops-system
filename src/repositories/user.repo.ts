@@ -33,6 +33,8 @@ export type NewUser = {
   email: string;
   role: Role;
   title?: string | null;
+  /** Already hashed — the repository never sees a passcode in the clear. */
+  passcodeHash?: string | null;
 };
 
 export function createUser(db: Database, input: NewUser): User {
@@ -46,10 +48,43 @@ export function createUser(db: Database, input: NewUser): User {
     createdAt: nowTimestamp(),
   };
   db.prepare(
-    `INSERT INTO users (id, name, email, role, title, active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(user.id, user.name, user.email, user.role, user.title, fromBool(user.active), user.createdAt);
+    `INSERT INTO users (id, name, email, role, title, active, passcode_hash, passcode_set_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    user.id,
+    user.name,
+    user.email,
+    user.role,
+    user.title,
+    fromBool(user.active),
+    input.passcodeHash ?? null,
+    input.passcodeHash ? user.createdAt : null,
+    user.createdAt,
+  );
   return user;
+}
+
+/**
+ * The stored hash for a user, by id or email.
+ *
+ * Deliberately NOT part of the `User` type: nothing that renders a user can
+ * reach a credential by accident, and the only caller is the auth service.
+ */
+export function findPasscodeHash(db: Database, key: { id: string } | { email: string }): string | null {
+  const row = (
+    'id' in key
+      ? db.prepare('SELECT passcode_hash FROM users WHERE id = ?').get(key.id)
+      : db.prepare('SELECT passcode_hash FROM users WHERE email = ?').get(key.email.toLowerCase())
+  ) as { passcode_hash: string | null } | undefined;
+  return row?.passcode_hash ?? null;
+}
+
+export function setPasscodeHash(db: Database, userId: string, hash: string): void {
+  db.prepare('UPDATE users SET passcode_hash = ?, passcode_set_at = ? WHERE id = ?').run(
+    hash,
+    nowTimestamp(),
+    userId,
+  );
 }
 
 export type UserPatch = {
@@ -130,6 +165,21 @@ export function findSession(db: Database, token: string): Session | null {
 
 export function deleteSession(db: Database, token: string): void {
   db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
+
+/**
+ * Sign somebody out everywhere, right now.
+ *
+ * A credential or a role that changed is only really changed once the sessions
+ * issued under the old one stop working — otherwise the person carries on with
+ * what they had until the token happens to expire.
+ */
+export function deleteSessionsForUser(db: Database, userId: string): number {
+  const before = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?').get(userId) as {
+    n: number;
+  };
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  return before.n;
 }
 
 export function purgeExpiredSessions(db: Database): void {

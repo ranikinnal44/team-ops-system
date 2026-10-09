@@ -7,16 +7,16 @@
  */
 import { api, session } from '../api.js';
 import {
-  el, card, field, select, stat, pageHead, errorBox, toast, initials,
+  el, card, field, select, stat, pageHead, errorBox, toast, initials, roleLabel,
 } from '../ui.js';
 
 const ROLE_OPTIONS = [
   { value: 'employee', label: 'Employee' },
+  { value: 'reviewer', label: 'Reviewer' },
   { value: 'manager', label: 'Manager' },
 ];
 
-const roleBadge = (role) =>
-  el('span', { class: `badge role-${role}`, text: role === 'manager' ? 'Manager' : 'Employee' });
+const roleBadge = (role) => el('span', { class: `badge role-${role}`, text: roleLabel(role) });
 
 export async function teamView(mount) {
   const isManager = session.user?.role === 'manager';
@@ -34,6 +34,7 @@ export async function teamView(mount) {
     const email = el('input', { type: 'email', required: true, placeholder: 'name@example.com' });
     const role = select(ROLE_OPTIONS, 'employee');
     const title = el('input', { type: 'text', placeholder: 'e.g. Mechanical Design Engineer' });
+    const passcode = el('input', { type: 'text', required: true, minlength: '6', placeholder: 'At least 6 characters' });
 
     const errors = el('div');
     const submit = el('button', { class: 'primary', type: 'submit', text: 'Add member' });
@@ -51,6 +52,7 @@ export async function teamView(mount) {
               email: email.value.trim(),
               role: role.value,
               title: title.value.trim() || null,
+              passcode: passcode.value,
             });
             toast(`${created.name} added to the team`);
             await reload();
@@ -63,8 +65,11 @@ export async function teamView(mount) {
       errors,
       el('div', { class: 'grid-2' }, field('Name', name), field('Email', email, 'Used to sign in. Must be unique.')),
       el('div', { class: 'grid-2' },
-        field('Role', role, 'Managers can assign work, approve deadlines and manage the team.'),
+        field('Role', role, 'Managers plan the work; reviewers confirm dates and sign off what is done.'),
         field('Designation', title, 'Optional — what they do on the team.')),
+      field('Passcode', passcode,
+        'Theirs alone, and how they sign in. Tell it to them — nobody can read it back afterwards, ' +
+        'only replace it.'),
       el('div', { class: 'row' }, submit),
     );
 
@@ -122,6 +127,29 @@ export async function teamView(mount) {
     );
 
     return el('tr', { class: 'team-edit' }, el('td', { colspan: '5' }, form));
+  }
+
+  /**
+   * Replace somebody's passcode. There is no "show" — the server stores a hash
+   * and can only be given a new one.
+   */
+  function resetPasscodeButton(member) {
+    return el('button', {
+      type: 'button',
+      text: 'Passcode',
+      onclick: async (event) => {
+        const next = globalThis.prompt?.(`New passcode for ${member.name} (at least 6 characters):`);
+        if (!next) return;
+        event.target.disabled = true;
+        try {
+          await api.resetPasscode(member.id, next);
+          toast(`${member.name}'s passcode changed — tell them what it is`);
+        } catch (error) {
+          toast(error.message, true);
+        }
+        event.target.disabled = false;
+      },
+    });
   }
 
   function setActive(member, active) {
@@ -195,6 +223,7 @@ export async function teamView(mount) {
                 },
               })
             : null,
+          isManager ? resetPasscodeButton(member) : null,
           isManager ? setActive(member, !member.active) : null,
         ),
       ),
@@ -247,6 +276,7 @@ export async function teamView(mount) {
       { class: 'stats' },
       stat('Members', active.length),
       stat('Managers', active.filter((m) => m.role === 'manager').length),
+      stat('Reviewers', active.filter((m) => m.role === 'reviewer').length),
       stat('Employees', active.filter((m) => m.role === 'employee').length),
       ...(isManager
         ? [stat('Open tasks', active.reduce((sum, m) => sum + (m.openTasks ?? 0), 0))]

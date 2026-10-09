@@ -82,6 +82,8 @@ const createSchema = object({
 });
 
 const updateSchema = object({
+  /** What the caller last saw. Present, it makes a clashing edit a 409. */
+  expectedLastUpdatedAt: optional(str({ max: 40 })),
   status: optional(oneOf(TASK_STATUSES)),
   progress: optional(int({ min: 0, max: 100 })),
   blocker: optional(nullable(str({ max: 2000 }))),
@@ -91,6 +93,7 @@ const updateSchema = object({
   description: optional(nullable(str({ max: 5000 }))),
   ownerId: optional(str({ max: 64 })),
   reviewerId: optional(nullable(str({ max: 64 }))),
+  effortDays: optional(int({ min: 1, max: 365 })),
   supportingMemberIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),
   priority: optional(nullable(oneOf(PRIORITIES))),
   // Movable, but never clearable: a task without a start and an end cannot be

@@ -10,7 +10,7 @@ import { createApp } from '../src/server.ts';
 import * as userRepo from '../src/repositories/user.repo.ts';
 import * as taskRepo from '../src/repositories/task.repo.ts';
 import type { Actor } from '../src/domain/types.ts';
-import { config } from '../src/config/index.ts';
+import { seedPasscode } from '../src/seed/passcodes.ts';
 
 /** Isolated in-memory database holding the DEMO dataset. */
 export function freshDb(): Database {
@@ -72,7 +72,7 @@ export type TestServer = {
     method: string,
     path: string,
     opts?: { token?: string; body?: unknown },
-  ) => Promise<{ status: number; body: any }>;
+  ) => Promise<{ status: number; body: any; headers: Record<string, string> }>;
 };
 
 export async function startTestServer(db: Database): Promise<TestServer> {
@@ -103,14 +103,18 @@ export async function startTestServer(db: Database): Promise<TestServer> {
       } catch {
         parsed = text;
       }
-      return { status: response.status, body: parsed };
+      return {
+        status: response.status,
+        body: parsed,
+        headers: Object.fromEntries(response.headers),
+      };
     },
   };
 }
 
 export async function loginAs(server: TestServer, email: string): Promise<string> {
   const result = await server.request('POST', '/api/auth/login', {
-    body: { email, passcode: config.authPasscode },
+    body: { email, passcode: seedPasscode(email) },
   });
   if (result.status !== 200) {
     throw new Error(`Login failed for ${email}: ${JSON.stringify(result.body)}`);
