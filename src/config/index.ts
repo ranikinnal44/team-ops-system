@@ -46,7 +46,7 @@ export type AppConfig = {
   readonly host: string;
   readonly databasePath: string;
   /**
-   * The code that authorises JOINING — bootstrapping the first manager on an
+   * The code that authorises JOINING — bootstrapping the first Task Assigner on an
    * empty system. Signing in uses each person's own passcode, not this.
    */
   readonly joinCode: string;

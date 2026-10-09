@@ -1,13 +1,13 @@
 /**
  * The team roster.
  *
- * Reading the directory is manager-only, as changing it is. Who is on the
+ * Reading the directory is Task-Assigner-only, as changing it is. Who is on the
  * team and which role each person holds is organisational information; doing
  * the work, and reviewing it, needs neither. Names still reach everyone else
  * the only way they are needed — on the tasks those people are named on.
  *
  * Two invariants are enforced here rather than left to the caller:
- *   1. The team never loses its last active manager, which would leave nobody
+ *   1. The team never loses its last active Task Assigner, which would leave nobody
  *      able to create tasks, decide deadlines or manage the roster.
  *   2. Nobody is deactivated while they still own open work. Every task has a
  *      single accountable owner; deactivating one silently breaks that, so the
@@ -107,9 +107,9 @@ export function addTeamMember(db: Database, actor: Actor, input: NewTeamMember):
 /**
  * Give somebody a new passcode.
  *
- * A manager can reset anyone's, which is how a forgotten one is recovered —
+ * A Task Assigner can reset anyone's, which is how a forgotten one is recovered —
  * there is no email round trip here. Nobody can read an existing passcode
- * back, including the manager doing the reset: only replace it.
+ * back, including the Task Assigner doing the reset: only replace it.
  */
 export function resetPasscode(db: Database, actor: Actor, userId: string, passcode: string): User {
   assertCan(actor.role, Capability.ManageTeam);
@@ -153,7 +153,7 @@ export function updateTeamMember(
   if (patch.active === false) {
     if (user.id === actor.id) {
       throw validationError('You cannot deactivate your own account.', [
-        { path: 'active', message: 'ask another manager to do this' },
+        { path: 'active', message: 'ask another Task Assigner to do this' },
       ]);
     }
     assertNoOpenWork(db, user);
@@ -190,7 +190,7 @@ function assertAnotherManagerRemains(db: Database, excludingUserId: string): voi
     .filter((u) => u.role === Role.Manager && u.id !== excludingUserId);
   if (others.length === 0) {
     throw conflict(
-      'This is the only active manager. Promote someone else to manager first, ' +
+      'This is the only active Task Assigner. Promote someone else to Task Assigner first, ' +
         'otherwise nobody could assign work or approve deadline changes.',
     );
   }

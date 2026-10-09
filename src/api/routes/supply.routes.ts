@@ -32,7 +32,7 @@ const updateSchema = object({
 export const supplyRoutes: Route[] = [
   {
     // Readable by everyone: an eight-week item becoming the critical path is
-    // the team's problem, not just the manager's.
+    // the team's problem, not just the Task Assigner's.
     method: 'GET',
     path: '/api/supply',
     handler: ({ db }) => supplyRegister(db),

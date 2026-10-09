@@ -1,6 +1,6 @@
 /**
- * Project hierarchy management. Creation is manager-only; reads are open to
- * every authenticated user so employees can see where their work sits.
+ * Project hierarchy management. Creation is Task-Assigner-only; reads are open to
+ * every authenticated user so members can see where their work sits.
  */
 import type { Database } from '../db/connection.ts';
 import { transaction } from '../db/connection.ts';
@@ -91,7 +91,7 @@ export function createDeliverable(
 /**
  * The workstreams this actor may see, resolved once per request.
  *
- * A manager gets the whole plan. An employee gets the workstreams they hold
+ * A Task Assigner gets the whole plan. A Member gets the workstreams they hold
  * work in, so the structure they can browse matches the tasks they can open
  * rather than advertising a plan they have no part in.
  */
@@ -190,7 +190,7 @@ export function getProjectTree(
   const project = repo.findProjectById(db, projectId) ?? repo.findProjectByCode(db, projectId);
   if (!project) throw notFound('Project');
 
-  // Employees see only the workstreams they hold work in, and only their own
+  // Members see only the workstreams they hold work in, and only their own
   // tasks inside them. A project they have no part in is reported as missing
   // rather than as an empty shell, which would still confirm it exists.
   const scope = workstreamScopeFor(db, actor);

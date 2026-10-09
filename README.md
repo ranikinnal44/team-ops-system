@@ -5,7 +5,7 @@ An internal **team task management and accountability system**: one place that a
 and, for the person doing the work, *what do I need to do today and what is blocking me*.
 
 > **Using the tool rather than building it?** See **[USAGE.md](USAGE.md)** — an end-to-end
-> guide for employees, managers and reviewers. This README is the architecture and
+> guide for members, Task Assigners and reviewers. This README is the architecture and
 > operations document.
 
 **Current state:** Layer 1, loaded with the **AutoDock Stream 1 build plan** — 28 tasks, 3 phases,
@@ -124,7 +124,7 @@ package.json  tsconfig.json  .env.example  .env  .gitignore  README.md
 ```
 src/domain/enums.ts           closed vocabularies: status, priority, role, flags
 src/domain/types.ts           entity shapes
-src/domain/status-machine.ts  legal transitions, manager-only reopen
+src/domain/status-machine.ts  legal transitions, Task-Assigner-only reopen
 src/domain/exceptions.ts      OVERDUE / DUE_SOON / NO_RECENT_UPDATE / BLOCKED + attention score
 src/domain/permissions.ts     capabilities, task field policy, visibility
 ```
@@ -156,7 +156,7 @@ src/seed/demo-data.ts DEMO DATA — declarative, imported by nothing but the run
 ```
 public/index.html  public/styles.css
 public/js/{app,api,ui}.js
-public/js/views/{login,manager,employee,task-list,task-detail,create-task,
+public/js/views/{login,Task Assigner,member,task-list,task-detail,create-task,
                  milestones,team,activity}.js
 ```
 
@@ -188,7 +188,7 @@ projects ──  task_ref_sequences                (per-project ref counter)
 
 | Table | Purpose |
 | --- | --- |
-| `users` | People and their role (`manager` / `employee`) |
+| `users` | People and their role (`Task Assigner` / `member`) |
 | `sessions` | Bearer tokens with expiry |
 | `projects` / `workstreams` / `milestones` / `deliverables` | The hierarchy |
 | `tasks` | Every actionable item — see below |
@@ -199,7 +199,7 @@ projects ──  task_ref_sequences                (per-project ref counter)
 | `task_ref_sequences` | Per-project counter behind `AD-MAN-001` |
 | `task_history` | Append-only activity log |
 | `comments` | Discussion thread per task |
-| `deadline_change_requests` | Employee request → manager decision |
+| `deadline_change_requests` | Member request → Task Assigner decision |
 | `task_external_links` | Generic Drive/GitHub/Calendar links (Layer 2+) |
 | `schema_meta` | Schema version |
 
@@ -222,7 +222,7 @@ against the first commitment therefore stays measurable however many extensions 
 
 ### Task scheduling rules
 
-Dates are not the manager's to set. The manager budgets **effort**; the owner proposes the
+Dates are not the Task Assigner's to set. The Task Assigner budgets **effort**; the owner proposes the
 days that spend it; the reviewer agrees them. The rules live together in
 `src/domain/task-schedule.ts`, so the service, the API and the forms enforce one definition
 rather than three drifting copies.
@@ -236,9 +236,9 @@ rather than three drifting copies.
    in two is nobody's problem but the owner's. Needing more is what the extension flow is for.
 3. **The reviewer agrees them, and then they lock.** Until they are agreed, work cannot start
    at all — so an unanswered proposal is somebody sitting idle, which is why
-   `SCHEDULE_AWAITING_REVIEW` outranks a merely stale update on the dashboard. A manager can
+   `SCHEDULE_AWAITING_REVIEW` outranks a merely stale update on the dashboard. A Task Assigner can
    agree a schedule too, so an absent reviewer never deadlocks a task.
-4. **Locked dates move only through an approved deadline extension** — including for a manager,
+4. **Locked dates move only through an approved deadline extension** — including for a Task Assigner,
    who would otherwise leave no trace. The extension raises `effort_days` to match the new
    window while `original_effort_days` and `original_due_date` keep the first estimate, so both
    the current budget and the slippage against the original stay readable.
@@ -291,15 +291,15 @@ npm start            # http://127.0.0.1:4000
 Open **http://127.0.0.1:4000** and pick a user. **Each person has their own passcode** — the
 seed prints them all when it runs, under "Sign in as". A seeded demo passcode is the email's
 local part with `123` on the end, so `demo.manager@example.com` signs in with `demomanager123`.
-Rani is the manager; Firaz, Ashutosh, Mallikarjun and Faizan are employees.
+Rani is the Task Assigner; Firaz, Ashutosh, Mallikarjun and Faizan are members.
 
-A manager sets a passcode when adding someone on the **Team** screen, and can replace anybody's
+A Task Assigner sets a passcode when adding someone on the **Team** screen, and can replace anybody's
 from the same row. Nothing can read one back: only a scrypt hash with a per-user salt is stored,
 so a forgotten passcode is replaced rather than recovered.
 
 ### Starting from nothing
 
-A fresh install has no users, so the login screen offers to create the first **manager** instead
+A fresh install has no users, so the login screen offers to create the first **Task Assigner** instead
 of an empty picker. From there the **Plan** screen builds the hierarchy by hand:
 
 ```
@@ -307,7 +307,7 @@ Plan  →  create the project
       →  add workstreams      (Mechanical Design, Procurement, …)
       →  add milestones       inside each workstream — named outcomes, no dates
       →  add deliverables and long-lead orders
-Team  →  add the rest of the team, as managers or employees
+Team  →  add the rest of the team, as Task Assigners or members
 Tasks →  create tasks, assign owners in bulk
 ```
 
@@ -425,7 +425,7 @@ recorded in the database and shown as a banner in the UI.
 reports how long is left to place each order and whether it will still arrive in time. The API,
 rules and table are intact; the screen that rendered them has been removed.
 
-**Bulk assignment.** Managers can tick rows on the Tasks screen and set an owner and priority
+**Bulk assignment.** Task Assigners can tick rows on the Tasks screen and set an owner and priority
 across a whole workstream at once. It goes through the same field policy, history log and
 clarification clearing as a single edit.
 
@@ -439,7 +439,7 @@ value is hard-coded in source; `.env` is git-ignored.
 
 ### A two-minute tour
 
-1. Sign in as **Rani** (manager) → the dashboard leads with counts, then
+1. Sign in as **Rani** (Task Assigner) → the dashboard leads with counts, then
    `OVERDUE` / `BLOCKED` / `NO RECENT UPDATE` / `DUE WITHIN 2 DAYS`, then per-person roll-ups.
 2. Check the **Requires clarification** card → each reason drills into **Tasks**, where the
    affected rows carry an accent edge and a *Gaps* count. Open one to fill the gap in.
@@ -447,8 +447,8 @@ value is hard-coded in source; `.env` is git-ignored.
    tasks are gone; only their own are visible, and the **Plan** narrows to the
    workstreams they actually hold work in — the rest of the project is not listed at all.
 4. Open a task, change the status, add a blocker, save → the change appears in the activity
-   history and on the manager's exception list.
-5. Try to change the due date as an employee → refused, pointing at the deadline-request flow.
+   history and on the Task Assigner's exception list.
+5. Try to change the due date as a member → refused, pointing at the deadline-request flow.
 6. Create a task with an effort budget and no dates → it carries `SCHEDULE_NOT_SET` and cannot
    be started. Sign in as its owner, propose dates, then as its reviewer, agree them — only
    then does work begin, and only the reviewer can later mark it complete.
@@ -466,12 +466,12 @@ Current state: **412 tests passing, 0 failing; `tsc --noEmit` clean.**
 
 ```
 tests/dates.test.ts           calendar maths, working days, week bounds
-tests/status-machine.test.ts  every legal and illegal transition, manager-only reopen
+tests/status-machine.test.ts  every legal and illegal transition, Task-Assigner-only reopen
 tests/exceptions.test.ts      each rule at its boundary + flag combination + ranking
 tests/permissions.test.ts     capabilities, field policy, visibility vs. update rights
 tests/validate.test.ts        schema validation and error paths
 tests/task-service.test.ts    creation, scoping, updates, history, dependencies, deadlines
-tests/dashboard.test.ts       summaries, exception buckets, sorting, employee buckets
+tests/dashboard.test.ts       summaries, exception buckets, sorting, member buckets
 tests/api.test.ts             end-to-end over real HTTP, including the full workflow
 tests/autodock-import.test.ts import fidelity, status mapping, provenance, and
                               — mostly — proof that nothing was invented
@@ -498,9 +498,9 @@ Coverage maps to the Phase 4 checklist:
 | Activity history | asserted after every mutating operation |
 
 The headline test, `api.test.ts` → *"create, assign, work, block, review, complete"*, walks
-the exact flow from the brief over real HTTP: manager creates and assigns → employee sees it
+the exact flow from the brief over real HTTP: Task Assigner creates and assigns → member sees it
 on their board → starts work → is refused a blocked status without naming the blocker →
-blocks it properly → manager finds it in the blocked bucket → unblock, review, complete →
+blocks it properly → Task Assigner finds it in the blocked bucket → unblock, review, complete →
 the whole journey is in the history.
 
 ---
@@ -515,10 +515,10 @@ outcome for every day of a multi-day task, captured as the task is added. See
 [Task scheduling rules](#task-scheduling-rules) for how the three hold together and which
 limits imported records are exempt from.
 
-**Roles** — three, split by what each one is answerable for: a manager plans the work, a
-reviewer confirms what people commit to, an employee does it.
+**Roles** — three, split by what each one is answerable for: a Task Assigner plans the work, a
+reviewer confirms what people commit to, a member does it.
 
-- *Manager*: create projects, workstreams, milestones, deliverables and tasks; assign owners;
+- *Task Assigner*: create projects, workstreams, milestones, deliverables and tasks; assign owners;
   set priorities and effort budgets; reassign; change status; view all tasks; view overdue,
   blocked, stale and upcoming; review team-level progress; decide deadline requests.
 - *Reviewer*: confirm the dates an owner proposes, sign off work submitted for review, and
@@ -526,12 +526,12 @@ reviewer confirms what people commit to, an employee does it.
   those**. The authority follows the accountability: one named person answers for each task's
   review. They read the whole board, including the team's load, because they cannot confirm
   what they cannot find.
-- *Employee*: see only tasks they own, support or review; today / upcoming / overdue / blocked /
+- *Member*: see only tasks they own, support or review; today / upcoming / overdue / blocked /
   awaiting review / recently completed; update status, progress, blocker, next action, comments
   and evidence links; propose their dates; request a deadline change; mark ready for review.
-- A reviewer writes no more of a task than an employee does, and **cannot** create projects,
+- A reviewer writes no more of a task than a member does, and **cannot** create projects,
   workstreams, milestones or tasks, reassign work, bulk-assign or manage the team.
-- Employees **cannot** change owner, project, milestone, priority, dates or day outcomes. The
+- Members **cannot** change owner, project, milestone, priority, dates or day outcomes. The
   attempt is refused with a message pointing at the deadline-request flow.
 
 Being a reviewer on a task and holding the reviewer *role* are still separate things: any
@@ -539,16 +539,16 @@ active user can be named a task's reviewer, which is what grants the per-task si
 adds board-wide visibility and the right to decide extensions on those same tasks.
 
 **Status machine** — exactly the five statuses, exactly the listed transitions, plus a
-manager-only `Completed → In Progress` reopen (documented below). Completing sets progress to
+Task-Assigner-only `Completed → In Progress` reopen (documented below). Completing sets progress to
 100 and stamps `completed_at`; reopening clears it. A task cannot enter `Blocked` without a
 blocker description — otherwise "what is blocked" would be a list without reasons.
 
-**Daily outcome log** — an employee doing the work reports what each day produced into
+**Daily outcome log** — a member doing the work reports what each day produced into
 `task_day_logs`, the counterpart to the `task_day_plans` that say what it was meant to
 produce. One entry per person per day; re-submitting a day replaces it. Progress and
 blockers raised there land on the task itself, so there is one number, not two that can
 disagree. Only the owner and supporting members may write one, and only while the task is
-in progress or blocked — a manager writing someone else's daily report is not accountability.
+in progress or blocked — a Task Assigner writing someone else's daily report is not accountability.
 
 **Exception engine** — `OVERDUE`, `DUE SOON`, `NO RECENT UPDATE`, `BLOCKED`, `MISSING DAILY
 UPDATE` as pure, threshold-
@@ -558,18 +558,18 @@ day elapsed, not three. A task is never both overdue and due-soon; the more seve
 **Attention score** — ranks open work by urgency × priority so both dashboards lead with the
 thing that matters most, rather than making the reader scan.
 
-**Dashboards** — the manager's full summary (12 counts), four dedicated exception sections,
+**Dashboards** — the Task Assigner's full summary (12 counts), four dedicated exception sections,
 per-person roll-ups with each person's single most urgent task, upcoming deadlines and pending
-deadline requests. The employee's board covers all seven required buckets with sorting by
+deadline requests. The member's board covers all seven required buckets with sorting by
 priority, due date, status or importance.
 
 **Activity history** — every change appends an entry with actor, field, before, after and a
 note; comments refresh `last_updated_at`, which clears the stale flag.
 
-**Deadline approval flow** — employee requests with a reason, manager approves or rejects,
+**Deadline approval flow** — member requests with a reason, Task Assigner approves or rejects,
 only one open request per task, and `original_due_date` survives.
 
-**Nine screens** — login/user selection, manager dashboard, employee dashboard, task list with
+**Nine screens** — login/user selection, Task Assigner dashboard, member dashboard, task list with
 filters/search/sort, task detail, create task, milestones (by schedule or by workstream), team,
 activity history. Every task row shows owner, title, due date with lateness, status, priority,
 exception flags and the next action or blocker — the six things the brief asks to be
@@ -594,14 +594,14 @@ Four independent layers, each in one place.
 On top of those sit three **relational** rules — about a person's relationship to one task,
 which a role cannot express:
 
-- **The reviewer** signs work off. Not the owner, not any manager-by-rank — the person assigned
-  to that task (a manager too, so an absent reviewer never deadlocks it).
+- **The reviewer** signs work off. Not the owner, not any Task Assigner-by-rank — the person assigned
+  to that task (a Task Assigner too, so an absent reviewer never deadlocks it).
 - **The owner** proposes dates and requests extensions; they are the one committing.
 - **The owner and supporting members** report daily outcomes. A reviewer watches the work
-  without doing it; a manager filing someone else's daily report would be putting words in
+  without doing it; a Task Assigner filing someone else's daily report would be putting words in
   their mouth.
 
-A workstream an employee has no part in returns **404, not 403**. "Forbidden" would confirm it
+A workstream a member has no part in returns **404, not 403**. "Forbidden" would confirm it
 exists, which is the thing being withheld.
 
 Route capability is checked **before the request body is parsed**, so a caller who may not use
@@ -635,7 +635,7 @@ again and remains authoritative.
    Progress` require the task's assigned reviewer, because an owner signing off their own work
    is not review. Both exits are gated: gating only the exit to Completed would let an owner
    withdraw from review and walk the task to Completed the long way round. `Completed → In
-   Progress` is manager-only, because work closed in error otherwise has no route back.
+   Progress` is Task-Assigner-only, because work closed in error otherwise has no route back.
 5. **Dashboard aggregation happens in memory.** Tasks are loaded and the rules evaluated in
    TypeScript rather than SQL. This is deliberate — one source of truth for the rules — and is
    comfortable into the low thousands of tasks. Past that, push the counts into SQL while
@@ -671,7 +671,7 @@ exception engine already produces everything it needs.
 2. **Notification delivery** — implement `Notifier` for email and Google Chat, register it in
    `registry.ts`, flip `NOTIFICATIONS_ENABLED`. Add a `notification_log` table so nobody is
    told the same thing twice.
-3. **A daily manager digest and a per-employee morning summary** — the dashboard read models
+3. **A daily Task Assigner digest and a per-employee morning summary** — the dashboard read models
    already return exactly these shapes.
 
 Then, in rough priority order:
@@ -693,7 +693,7 @@ It is kept because the real imported data states no deadlines of its own — wha
 derived stand-ins — so it exercises none of the committed-deadline paths that the demo dataset
 does.
 
-4 users (1 manager, 3 employees) · 2 projects (AutoDock, Warehouse Automation) ·
+4 users (1 Task Assigner, 3 members) · 2 projects (AutoDock, Warehouse Automation) ·
 8 workstreams across the two (Hardware, Manipulation, Perception, Navigation, Software,
 Testing, Procurement) · 8 milestones · 4 deliverables · **15 tasks** · 63 history entries ·
 4 comments · 1 pending deadline request.
@@ -704,7 +704,7 @@ dependencies, with evidence links, and with no recent update.
 
 Every demo task also obeys the scheduling rules the app enforces — none runs longer than three
 days, and the multi-day ones carry an outcome per day — so the demo never shows work the system
-would refuse. The pending deadline request is deliberately one a manager can approve: doing so
+would refuse. The pending deadline request is deliberately one a Task Assigner can approve: doing so
 stretches a one-day task to three, and the two days it adds land on the clarification queue
 needing an outcome each.
 

@@ -1,7 +1,7 @@
 # Using Team Ops
 
-A guide for the three people who use this system: the **manager** who owns the plan,
-the **employee** who does the work, and the **reviewer** who signs it off.
+A guide for the three people who use this system: the **Task Assigner** who owns the plan,
+the **member** who does the work, and the **reviewer** who signs it off.
 
 Read your own section end to end. The first two sections apply to everybody.
 
@@ -28,14 +28,14 @@ work, but only the owner drives the task's status. Work with nobody's name on it
 as unassigned rather than being quietly parked on whoever typed it in.
 
 **2. Dates are agreed, not assigned.**
-A manager sets an *effort budget* — how many working days a task is worth. The **owner**
+A Task Assigner sets an *effort budget* — how many working days a task is worth. The **owner**
 proposes the actual start and end dates that spend that budget. The **reviewer** agrees
 them. Once agreed, the dates lock: they move only through an approved extension, which
 leaves a record of who approved it and why. Nothing can start before its dates are agreed.
 
 **3. Work is signed off by someone other than whoever did it.**
 The owner applies for review; they cannot grant it. Only the task's named reviewer (or a
-manager, so an absent reviewer never deadlocks a task) can move work to Completed or send
+Task Assigner, so an absent reviewer never deadlocks a task) can move work to Completed or send
 it back.
 
 ---
@@ -47,18 +47,18 @@ it back.
 2. Pick your name from the list on the sign-in screen.
 3. Enter your passcode and press **Sign in**.
 
-Your passcode is your own. The manager who added you to the team chose it and will have
-told you what it is; if you have lost it, ask any manager to reset it. Nobody — including
-the manager doing the reset — can read your existing passcode back, only replace it.
+Your passcode is your own. The Task Assigner who added you to the team chose it and will have
+told you what it is; if you have lost it, ask any Task Assigner to reset it. Nobody — including
+the Task Assigner doing the reset — can read your existing passcode back, only replace it.
 
 On a brand-new system with nobody in it yet, the sign-in screen instead offers to create
-the first manager. That needs the **join code** (`AUTH_JOIN_CODE`, from whoever set the
-server up), which authorises that one account and nothing else. That first manager then
+the first Task Assigner. That needs the **join code** (`AUTH_JOIN_CODE`, from whoever set the
+server up), which authorises that one account and nothing else. That first Task Assigner then
 builds the plan and adds everyone else.
 
 ### What you see after signing in
 
-| | Manager | Reviewer | Employee |
+| | Task Assigner | Reviewer | Member |
 | --- | --- | --- | --- |
 | Lands on | Dashboard | Dashboard | My work |
 | **Dashboard** — the whole team's exceptions | yes | yes | — |
@@ -71,7 +71,7 @@ builds the plan and adds everyone else.
 
 A reviewer sees the whole board on purpose: you cannot review what you cannot find. Seeing
 everything is not the same as being able to change it — a reviewer edits no more of a task
-than an employee does.
+than a member does.
 
 ### Reading a task
 
@@ -96,7 +96,7 @@ Coloured tags on a task tell you why it needs attention:
 Some tasks came from an imported plan rather than being typed in here. Where the source
 document did not say something — who owns it, what the deadline is, which milestone it
 belongs to — the system records a **gap** instead of inventing a value. Gaps appear as a
-`GAPS` tag on the task and as "Requires clarification" on the manager dashboard.
+`GAPS` tag on the task and as "Requires clarification" on the Task Assigner dashboard.
 
 Open the task, click the `GAPS` tag, and the missing field is highlighted with a control to
 fill it in. Filling it closes the gap automatically — there is no separate "mark as done".
@@ -109,9 +109,9 @@ This is the spine. Every role's section below is a view of the same sequence.
 
 | # | Step | Who does it | Where |
 | --- | --- | --- | --- |
-| 1 | Create the project, workstreams and milestones | Manager | Plan |
-| 2 | Create the task, naming a **reviewer** and an **effort budget** | Manager | Tasks → + New task |
-| 3 | Give the task an owner and a priority | Manager | Tasks (bulk) or the task itself |
+| 1 | Create the project, workstreams and milestones | Task Assigner | Plan |
+| 2 | Create the task, naming a **reviewer** and an **effort budget** | Task Assigner | Tasks → + New task |
+| 3 | Give the task an owner and a priority | Task Assigner | Tasks (bulk) or the task itself |
 | 4 | Propose start and end dates, and what each day delivers | Owner | Task → Schedule |
 | 5 | Agree the dates, or send them back | Reviewer | Task → Dates awaiting review |
 | 6 | Start work: **Not Started → In Progress** | Owner | Task → Update this task |
@@ -124,24 +124,24 @@ And the exception, which can happen any time after step 5:
 
 | | Ask for more time | Owner | Task → Deadline |
 | --- | --- | --- | --- |
-| | Approve or reject the extension | Manager, or the task's reviewer | Dashboard, or the task |
+| | Approve or reject the extension | Task Assigner, or the task's reviewer | Dashboard, or the task |
 
 ### The five statuses
 
 | Status | Meaning | Can move to | Who may move it |
 | --- | --- | --- | --- |
-| **Not Started** | Nothing has begun. | In Progress | Owner, reviewer or manager — **only once dates are agreed** |
-| **In Progress** | Live work. Owes a daily outcome. | Blocked, Review | Owner, reviewer or manager |
-| **Blocked** | Stopped by something external. **Must name the blocker.** | In Progress | Owner, reviewer or manager |
-| **Review** | Finished, waiting for sign-off. | Completed, In Progress | **The named reviewer, or a manager** |
-| **Completed** | Signed off. | In Progress (reopen) | **Manager only** |
+| **Not Started** | Nothing has begun. | In Progress | Owner, reviewer or Task Assigner — **only once dates are agreed** |
+| **In Progress** | Live work. Owes a daily outcome. | Blocked, Review | Owner, reviewer or Task Assigner |
+| **Blocked** | Stopped by something external. **Must name the blocker.** | In Progress | Owner, reviewer or Task Assigner |
+| **Review** | Finished, waiting for sign-off. | Completed, In Progress | **The named reviewer, or a Task Assigner** |
+| **Completed** | Signed off. | In Progress (reopen) | **Task Assigner only** |
 
 Progress percentage follows the status: moving to Completed sets 100%, moving to Not
 Started sets 0%, and you cannot type 100% until the task is at Review or Completed.
 
 ---
 
-## 4. If you are an employee
+## 4. If you are a member
 
 Your job in this system is to keep your own commitments visible: agree dates you can hit,
 say what each day produced, and raise a blocker early rather than silently slipping.
@@ -160,7 +160,7 @@ first.
 
 ### Step 1 — Agree the dates before you start
 
-When a manager assigns you a task, it arrives with an **effort budget** (for example
+When a Task Assigner assigns you a task, it arrives with an **effort budget** (for example
 "3 working days") but no agreed dates. The task shows **Needs dates from its owner**.
 
 Open the task and use the **Schedule** panel to propose:
@@ -173,7 +173,7 @@ Submit, and the task moves to **Dates awaiting review**. Your reviewer either ag
 (the dates lock and you can start) or sends them back with a note for you to revise.
 
 > A task runs for at most **5 working days** by default. If the work genuinely needs
-> longer, it is not a task — ask your manager to split it.
+> longer, it is not a task — ask your Task Assigner to split it.
 
 ### Step 2 — Start the work
 
@@ -197,7 +197,7 @@ future date, and logging again for the same day replaces that day's entry.
 
 **Update this task** → Status `→ Blocked`, and fill in **Blocker** describing what is
 stopping you. The blocker is required — a blocked task that does not say what is blocking it
-helps nobody. It then shows on your manager's dashboard immediately.
+helps nobody. It then shows on your Task Assigner's dashboard immediately.
 
 Clear the blocker and move back to **In Progress** when it is resolved.
 
@@ -228,8 +228,8 @@ On the task, in the **Deadline** panel:
 2. Give a **Reason** — why the agreed date is no longer reachable.
 3. Press **Request deadline change**.
 
-The request appears on the manager's dashboard and on the task. While it is pending the
-task shows "Awaiting a manager decision", and you can only have one pending request per
+The request appears on the Task Assigner's dashboard and on the task. While it is pending the
+task shows "Awaiting a Task Assigner decision", and you can only have one pending request per
 task at a time. Approved, the end date moves and the budget rises to match; the system
 still remembers your original date, so slippage stays measurable.
 
@@ -240,16 +240,16 @@ Split the remaining work into a new task instead.
 
 | You want to | Ask |
 | --- | --- |
-| Change the owner, title, description or priority | Your manager |
-| Move an agreed deadline | Request a deadline change (manager or reviewer approves) |
-| Change the effort budget, milestone, dependencies or supporting members | Your manager |
-| Change the reviewer | Your manager |
+| Change the owner, title, description or priority | Your Task Assigner |
+| Move an agreed deadline | Request a deadline change (Task Assigner or reviewer approves) |
+| Change the effort budget, milestone, dependencies or supporting members | Your Task Assigner |
+| Change the reviewer | Your Task Assigner |
 | Mark your own work Completed | Your reviewer |
 | See a colleague's tasks | Not available — you see the tasks you are on |
 
 ---
 
-## 5. If you are a manager
+## 5. If you are a Task Assigner
 
 You own the plan and the structure. You do not own the dates — the people doing the work
 propose those, and reviewers agree them. Your job is to budget the effort, name the
@@ -282,15 +282,15 @@ You cannot read an existing passcode back; it is stored hashed, so it can only b
 
 Choosing the role:
 
-- **Employee** — does the work. Sees only the tasks they are on.
+- **Member** — does the work. Sees only the tasks they are on.
 - **Reviewer** — confirms what other people commit to: proposed dates, submitted work, and
   extension requests, on the tasks they are named on. Sees everything so they can find what
   is waiting on them. Can also own work of their own.
-- **Manager** — everything above plus the plan, the roster and the budgets.
+- **Task Assigner** — everything above plus the plan, the roster and the budgets.
 
 Two things the system will not let you do:
 
-- **Remove the last active manager.** Promote someone else first, or nobody could assign
+- **Remove the last active Task Assigner.** Promote someone else first, or nobody could assign
   work or approve deadline changes.
 - **Deactivate someone who still owns open work.** It names the tasks; reassign them first.
   Every task has one accountable owner, and deactivating someone silently breaks that.
@@ -367,7 +367,7 @@ You are the fallback everywhere, so a single absent person never deadlocks a tas
 - You can set the schedule and agree it in the same action. Your own submission does not sit
   in a queue addressed to yourself.
 
-What you cannot do: move locked dates by editing them. Even for a manager, an agreed
+What you cannot do: move locked dates by editing them. Even for a Task Assigner, an agreed
 schedule moves only through the extension flow — otherwise the change leaves no trace of who
 decided it.
 
@@ -379,7 +379,7 @@ You confirm what other people commit to. You do not plan the work and you do not
 your authority is exercised through three decisions, on the tasks you are named on.
 
 You can see every task in the system, because you cannot review what you cannot find. You
-can edit no more of a task than an employee can.
+can edit no more of a task than a member can.
 
 ### Finding what is waiting on you
 
@@ -436,7 +436,7 @@ Then **Update this task** → Status:
 - `→ In Progress` — sent back. Add a **Comment** in the same action saying what is missing;
   it lands in the activity log where the owner will see it.
 
-Only you and a manager can make either move. The owner cannot complete their own work, and
+Only you and a Task Assigner can make either move. The owner cannot complete their own work, and
 cannot withdraw it from Review to get around you.
 
 ### Decision 3 — Decide an extension
@@ -445,13 +445,13 @@ When an owner asks for more time on a task you review, approve or reject it. App
 moves the end date and raises the budget to match; the original date stays on record.
 
 You can only decide requests on tasks you are the reviewer of — the authority follows the
-accountability. A manager answers for the whole plan, so theirs is not narrowed. The
+accountability. A Task Assigner answers for the whole plan, so theirs is not narrowed. The
 dashboard shows all pending requests; if you try to decide one that is not yours, the
 system will say so.
 
 ### Reviewing your own work
 
-You can own tasks like anyone else. On those, you are an employee: propose your dates, log
+You can own tasks like anyone else. On those, you are a member: propose your dates, log
 your daily outcomes, request extensions. Someone else reviews them.
 
 ---
@@ -463,22 +463,22 @@ The refusals are the rules doing their job. The common ones:
 | Message | What to do |
 | --- | --- |
 | *"This task has no agreed dates yet. Propose a start and end date first."* | The owner proposes dates; the reviewer agrees them. Then work can start. |
-| *"These dates are still with the reviewer. Work starts once they are agreed."* | Chase the reviewer, or ask a manager to decide. |
-| *"This schedule is agreed and locked. Request a deadline extension to move it."* | Use the Deadline panel. Editing locked dates is not available to anyone, including managers. |
-| *"Only this task's reviewer can move it from Review to Completed."* | Ask your reviewer, or a manager if they are away. |
-| *"This task has no reviewer, so there is nobody to send it to."* | A manager assigns one, then it can go to review. |
+| *"These dates are still with the reviewer. Work starts once they are agreed."* | Chase the reviewer, or ask a Task Assigner to decide. |
+| *"This schedule is agreed and locked. Request a deadline extension to move it."* | Use the Deadline panel. Editing locked dates is not available to anyone, including Task Assigners. |
+| *"Only this task's reviewer can move it from Review to Completed."* | Ask your reviewer, or a Task Assigner if they are away. |
+| *"This task has no reviewer, so there is nobody to send it to."* | A Task Assigner assigns one, then it can go to review. |
 | *"A blocked task must describe its blocker."* | Fill in the Blocker field. |
 | *"Move the task to Review before marking it 100% complete."* | 100% means finished, and finished means reviewed. |
 | *"A day of work cannot put the task at 100%."* | Same rule, from the daily outcome form. Log the day, then send the task for review. |
 | *"The reviewer cannot be the owner."* | Nobody signs off their own work. Pick a different reviewer, or a different owner. In a bulk assignment the clashing tasks are skipped and listed; the rest still go through. |
 | *"A daily outcome can only be logged while a task is in progress or blocked."* | Start the task first, or it is already past the point of daily logging. |
 | *"Only the task owner or a supporting member can log a daily outcome."* | It is a report on work done, not a note about it. Comment instead. |
-| *"Request a deadline change instead — a manager must approve it."* | You tried to edit the due date directly. |
-| *"Only a manager can reassign a task owner."* | Ask your manager. |
+| *"Request a deadline change instead — a Task Assigner must approve it."* | You tried to edit the due date directly. |
+| *"Only a Task Assigner can reassign a task owner."* | Ask your Task Assigner. |
 | *"These dates are not agreed yet, so there is nothing to extend."* | Propose the dates you need instead of requesting an extension. |
 | *"This task already has a deadline change awaiting a decision."* | Wait for it to be decided; one at a time. |
 | *"That would make the task N working days; the cap is 5."* | Split the remaining work into a new task. |
-| *"You can only decide requests on tasks you are the reviewer of."* | A manager can decide it. |
+| *"You can only decide requests on tasks you are the reviewer of."* | A Task Assigner can decide it. |
 | *"X still owns N open task(s)."* | Reassign them before deactivating the account. |
 
 ---
@@ -503,13 +503,13 @@ These thresholds are configuration, not code. Whoever runs the server can change
 Honest notes about where the app does not yet match the process described above. None of
 them change the rules — they change where you have to go to apply them.
 
-- **An employee cannot propose their own dates from the UI yet.** The Schedule panel
-  currently renders for managers only; an employee owner sees the Deadline panel instead.
-  Until this is wired up, a manager sets the schedule (which agrees it in the same action),
+- **A Member cannot propose their own dates from the UI yet.** The Schedule panel
+  currently renders for Task Assigners only; a member owner sees the Deadline panel instead.
+  Until this is wired up, a Task Assigner sets the schedule (which agrees it in the same action),
   or the owner proposes dates through the API. Everything downstream — the lock, the
   extension flow, the "needs dates" and "awaiting review" flags — works as written.
 - **A reviewer decides deadline requests from the Dashboard, not from the task.** The
-  task's own Deadline panel still shows Approve/Reject to managers only. Use the
+  task's own Deadline panel still shows Approve/Reject to Task Assigners only. Use the
   **Waiting on you** panel, which lists exactly the requests you can decide.
 - **This is not production authentication.** There is no rate limiting, no lockout and no
   second factor. Run it on a network you trust.

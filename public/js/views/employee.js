@@ -1,4 +1,4 @@
-/** Screen 3 — Employee dashboard: what to do today, next, and what is stuck. */
+/** Screen 3 — Member dashboard: what to do today, next, and what is stuck. */
 import { api, session } from '../api.js';
 import {
   el, card, tightCard, listCard, exceptionGrid, emptyState, stat, taskRows, pageHead, formatDate,
@@ -25,7 +25,7 @@ export async function employeeView(mount, params) {
         viewingOther
           ? 'Tasks appear here once they are given an owner.'
           : 'The build plan is loaded but its tasks have not been given owners. ' +
-              'Once a manager assigns you work, it will show up here, most important first.',
+              'Once a Task Assigner assigns you work, it will show up here, most important first.',
         el('a', { class: 'btn', href: '#/tasks', text: 'Browse the plan' }),
       ),
     );

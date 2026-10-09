@@ -22,7 +22,7 @@ export const SCHEMA_VERSION = '11';
  * with a per-user salt) in place of one shared `AUTH_PASSCODE`. Accounts that
  * predate it are backfilled with that shared code so nobody is locked out by
  * the upgrade; the shared value survives only as the join code that authorises
- * bootstrapping the first manager.
+ * bootstrapping the first Task Assigner.
  *
  * Schema 9 added the `reviewer` role to the `users.role` vocabulary. SQLite
  * cannot widen a CHECK in place, so the table is rebuilt from `schema.sql`.
@@ -33,7 +33,7 @@ export const SCHEMA_VERSION = '11';
  * again. Dates now exist only on a task, agreed between its owner and its
  * reviewer. Both are table rebuilds, applied in place by `migrations.ts`.
  *
- * Schema 7 moved scheduling: a manager now sets an effort budget in working
+ * Schema 7 moved scheduling: a Task Assigner now sets an effort budget in working
  * days and the owner proposes the dates that spend it, so `start_date` and
  * `due_date` became nullable again (reversing v5) and the task gained
  * `effort_days`, `original_effort_days` and the `schedule_*` columns.

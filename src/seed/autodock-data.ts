@@ -68,7 +68,7 @@ export type AutoDockDataset = {
 };
 
 /**
- * Roles come from the brief: Rani is the manager, everyone else an employee.
+ * Roles come from the brief: Rani is the Task Assigner, everyone else a Member.
  * Nothing in the source document establishes a role beyond task ownership, so
  * nothing further is inferred.
  */

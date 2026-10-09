@@ -1,6 +1,6 @@
 /**
  * The data-quality queue: things a source record did not establish and that a
- * manager must decide.
+ * Task Assigner must decide.
  */
 import type { Database } from '../db/connection.ts';
 import { toBool, fromBool, toText } from '../db/connection.ts';

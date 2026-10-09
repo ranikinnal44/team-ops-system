@@ -138,11 +138,11 @@ describe('team service', () => {
 
     assert.throws(
       () => team.updateTeamMember(db, boss, boss.id, { role: Role.Employee }),
-      /only active manager/i,
+      /only active Task Assigner/i,
     );
     assert.throws(
       () => team.updateTeamMember(db, boss, boss.id, { active: false }),
-      /only active manager/i,
+      /only active Task Assigner/i,
     );
 
     // With a second manager in place, the demotion is allowed.

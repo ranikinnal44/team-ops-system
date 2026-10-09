@@ -1,4 +1,4 @@
-/** Screen 2 — Manager dashboard: summary, exceptions, people, upcoming. */
+/** Screen 2 — Task Assigner dashboard: summary, exceptions, people, upcoming. */
 import { api, session } from '../api.js';
 import {
   el, card, tightCard, listCard, exceptionSection, exceptionGrid, stat, taskRows, pageHead,
@@ -330,7 +330,7 @@ export async function managerView(mount) {
 
   mount.replaceChildren(
     pageHead(
-      'Manager dashboard',
+      'Task Assigner dashboard',
       `What is happening, what is late, what is blocked — as of ${formatDate(board.generatedFor)}`,
       el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }),
     ),

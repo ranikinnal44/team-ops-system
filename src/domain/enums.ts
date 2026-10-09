@@ -56,7 +56,7 @@ export const ROLES = Object.values(Role) as readonly Role[];
 /**
  * How settled a task's dates are.
  *
- * The manager sets a budget in working days; the employee proposes the dates
+ * The Task Assigner sets a budget in working days; the member proposes the dates
  * that spend it; the reviewer approves them. Once approved the dates are
  * locked and only an approved deadline extension moves them.
  */

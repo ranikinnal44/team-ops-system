@@ -107,7 +107,7 @@ export type Task = {
   /** Qualitative progress kept verbatim from the source, e.g. "70-80% Done". */
   readonly progressNote: string | null;
   /**
-   * The manager's budget, in working days. Set at creation; raised only by an
+   * The Task Assigner's budget, in working days. Set at creation; raised only by an
    * approved deadline extension, which preserves the original below.
    */
   readonly effortDays: number | null;

@@ -481,7 +481,7 @@ export function findTaskByRef(db: Database, ref: string): TaskWithContext | null
 export type TaskFilter = {
   /** Tasks this user owns. */
   ownerId?: string;
-  /** Tasks this user owns, supports or reviews — an employee's visible set. */
+  /** Tasks this user owns, supports or reviews — a member's visible set. */
   participantId?: string;
   reviewerId?: string;
   projectId?: string;
@@ -601,7 +601,7 @@ export function countTasksByOwner(db: Database): Map<string, number> {
 
 /**
  * Distinct workstreams the user holds work in, as owner, reviewer or
- * supporting member. Backs an employee's visible slice of the plan.
+ * supporting member. Backs a member's visible slice of the plan.
  */
 export function listParticipantWorkstreamIds(db: Database, userId: string): string[] {
   const rows = db

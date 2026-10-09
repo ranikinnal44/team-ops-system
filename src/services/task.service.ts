@@ -162,7 +162,7 @@ export function getTask(db: Database, actor: Actor, taskId: string, now = new Da
 }
 
 /**
- * List tasks visible to the actor. Employees are always scoped to tasks they
+ * List tasks visible to the actor. Members are always scoped to tasks they
  * own, support or review — the scope is applied here, not trusted from input.
  */
 export function listTasks(
@@ -197,13 +197,13 @@ export type CreateTaskInput = {
   priority?: Priority | null;
   /**
    * Required: how many working days this should take. Dates are not the
-   * manager's to set — the owner proposes days that spend this budget and the
+   * Task Assigner's to set — the owner proposes days that spend this budget and the
    * reviewer agrees them.
    */
   effortDays: number;
   /**
-   * Optional manager override. Supplying both dates schedules the task
-   * directly and locks it, because the manager is the authority the reviewer
+   * Optional Task Assigner override. Supplying both dates schedules the task
+   * directly and locks it, because the Task Assigner is the authority the reviewer
    * would otherwise be standing in for. Omit them for the normal flow.
    */
   startDate?: IsoDate;
@@ -258,7 +258,7 @@ export function createTask(
     assertActiveUser(db, id, 'supportingMemberIds', 'Supporting member');
   }
   const effortDays = normaliseEffortDays(input.effortDays, maxEffortDays());
-  // Dates are optional at creation. When a manager supplies them the task is
+  // Dates are optional at creation. When a Task Assigner supplies them the task is
   // scheduled and locked on the spot; otherwise it starts life unscheduled and
   // waits for its owner to propose a window.
   const scheduled =
@@ -315,7 +315,7 @@ export function createTask(
         `${effortDays} working day${effortDays === 1 ? '' : 's'} (${priorityText})` +
         (scheduled === null
           ? ', dates to be proposed by its owner.'
-          : `, scheduled ${describeSchedule(scheduled.startDate, scheduled.dueDate)} by the manager.`),
+          : `, scheduled ${describeSchedule(scheduled.startDate, scheduled.dueDate)} by the Task Assigner.`),
       createdAt: timestamp,
     });
 
@@ -335,7 +335,7 @@ export function createTask(
       });
     }
 
-    // Anything left undecided at creation goes straight onto the manager's
+    // Anything left undecided at creation goes straight onto the Task Assigner's
     // clarification queue instead of being silently defaulted. Dates are not
     // among them: an unscheduled task is a normal state with its own flag.
     if (!input.priority) {
@@ -457,7 +457,7 @@ export type UpdateTaskInput = {
   reviewerId?: string | null;
   supportingMemberIds?: readonly string[];
   priority?: Priority | null;
-  /** The manager's budget in working days. Raising it is a re-estimate. */
+  /** The Task Assigner's budget in working days. Raising it is a re-estimate. */
   effortDays?: number;
   /** Movable, never clearable — see the create schema. */
   startDate?: IsoDate;
@@ -514,7 +514,7 @@ export function updateTask(
 
   // Agreed DATES are a commitment, not a field: once locked they move only
   // through the extension flow, which records who approved the change and why
-  // — including for a manager, who would otherwise leave no trace.
+  // — including for a Task Assigner, who would otherwise leave no trace.
   //
   // Day outcomes are deliberately NOT locked. They say what each agreed day
   // delivers, not when the work happens, and an approved extension leaves new
@@ -563,7 +563,7 @@ export function updateTask(
     if (fields.status === TaskStatus.Review && task.reviewerId === null) {
       throw conflict(
         'This task has no reviewer, so there is nobody to send it to. ' +
-          'A manager must assign one before it can go to review.',
+          'A Task Assigner must assign one before it can go to review.',
       );
     }
     nextStatus = fields.status;
@@ -652,7 +652,7 @@ export function updateTask(
     });
   }
 
-  // --- manager-only fields -------------------------------------------------
+  // --- Task-Assigner-only fields -------------------------------------------------
   // Resolved before either field is written, so a payload that moves the owner
   // and the reviewer at once is judged on where it lands rather than on the
   // order the two happen to be applied in.
@@ -1053,7 +1053,7 @@ export function listHistory(db: Database, actor: Actor, taskId: string): TaskHis
   return activityRepo.listHistoryForTask(db, task.id);
 }
 
-/** Team-wide feed for managers; scoped to the actor's own tasks otherwise. */
+/** Team-wide feed for Task Assigners; scoped to the actor's own tasks otherwise. */
 export function listActivityFeed(
   db: Database,
   actor: Actor,
@@ -1081,7 +1081,7 @@ export function requestDeadlineChange(
   }
   if (task.dueDate === null) {
     throw validationError('This task has no deadline to change yet', [
-      { path: 'requestedDueDate', message: 'the task has no due date — a manager must set one first' },
+      { path: 'requestedDueDate', message: 'the task has no due date — a Task Assigner must set one first' },
     ]);
   }
   if (input.requestedDueDate === task.dueDate) {
@@ -1161,7 +1161,7 @@ export function decideDeadlineChange(
     throw conflict('This request has already been decided.');
   }
   // A reviewer decides the tasks they were named on, and only those: the
-  // authority follows the accountability. A manager answers for the whole
+  // authority follows the accountability. A Task Assigner answers for the whole
   // plan, so theirs is not narrowed.
   if (actor.role === Role.Reviewer) {
     const subject = taskRepo.findTaskById(db, request.taskId);
@@ -1233,7 +1233,7 @@ export function decideDeadlineChange(
 /**
  * An approved extension moves the end date without anyone having said what the
  * newly added days deliver. Rather than invent outcomes — or drop the rule —
- * the gap goes onto the manager's clarification queue, where the rest of the
+ * the gap goes onto the Task Assigner's clarification queue, where the rest of the
  * "unknown is not decided" handling already lives. Setting `dayPlans` through
  * `updateTask` closes it.
  */
@@ -1298,7 +1298,7 @@ export type DayLogInput = {
  * Record what a day actually produced.
  *
  * Who: the owner or a supporting member — the people doing the work. A
- * reviewer watches the task but does not report on it, and a manager writing
+ * reviewer watches the task but does not report on it, and a Task Assigner writing
  * someone else's daily outcome would put words in their mouth, so neither can.
  *
  * When: only while the task is in progress or blocked. A not-started task has
@@ -1439,7 +1439,7 @@ export type ProposeScheduleInput = {
  * The owner proposes the days that will spend their effort budget.
  *
  * Only the owner: these are the dates they are committing to, and a commitment
- * made on someone's behalf is not a commitment. A manager can still schedule a
+ * made on someone's behalf is not a commitment. A Task Assigner can still schedule a
  * task directly at creation, which locks it without a proposal.
  */
 export function proposeSchedule(
@@ -1464,7 +1464,7 @@ export function proposeSchedule(
   if (task.effortDays === null) {
     throw conflict(
       'This task has no effort budget yet, so there is nothing to schedule against. ' +
-        'A manager must set one first.',
+        'A Task Assigner must set one first.',
     );
   }
 

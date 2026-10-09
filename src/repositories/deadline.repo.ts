@@ -1,5 +1,5 @@
 /**
- * Deadline change requests — the approval path that lets employees ask for a
+ * Deadline change requests — the approval path that lets members ask for a
  * new due date without being able to set one.
  */
 import type { Database } from '../db/connection.ts';

@@ -95,9 +95,9 @@ export function assertCan(role: Role, capability: Capability): void {
 }
 
 /**
- * Task fields an employee may write on a task they are involved in.
+ * Task fields a member may write on a task they are involved in.
  * Everything outside this list — owner, project, priority, due date — is
- * manager-only, which is what the "no silent reassignment or deadline
+ * Task-Assigner-only, which is what the "no silent reassignment or deadline
  * extension" rule comes down to.
  */
 export const EMPLOYEE_WRITABLE_TASK_FIELDS = [
@@ -129,28 +129,28 @@ export type TaskField = (typeof MANAGER_WRITABLE_TASK_FIELDS)[number];
 
 export const WRITABLE_TASK_FIELDS_BY_ROLE: Record<Role, readonly TaskField[]> = {
   [Role.Manager]: MANAGER_WRITABLE_TASK_FIELDS,
-  // A reviewer writes no more than an employee does. Their authority is
+  // A reviewer writes no more than a member does. Their authority is
   // exercised through the decisions — schedule, review, extension — not by
   // editing the task underneath whoever owns it.
   [Role.Reviewer]: EMPLOYEE_WRITABLE_TASK_FIELDS,
   [Role.Employee]: EMPLOYEE_WRITABLE_TASK_FIELDS,
 };
 
-/** Human-facing reason used when an employee attempts a manager-only field. */
+/** Human-facing reason used when a member attempts a Task-Assigner-only field. */
 const FIELD_DENIAL_REASON: Partial<Record<TaskField, string>> = {
-  ownerId: 'Only a manager can reassign a task owner.',
-  priority: 'Only a manager can change priority.',
-  dueDate: 'Request a deadline change instead — a manager must approve it.',
-  effortDays: 'Only a manager can change the effort budget.',
-  startDate: 'Only a manager can change the start date.',
-  dayPlans: 'Only a manager can change what each day of the task delivers.',
-  milestoneId: 'Only a manager can move a task to another milestone.',
-  deliverableId: 'Only a manager can move a task to another deliverable.',
-  reviewerId: 'Only a manager can change the reviewer.',
-  supportingMemberIds: 'Only a manager can change supporting members.',
-  dependencyTaskIds: 'Only a manager can change dependencies.',
-  title: 'Only a manager can rename a task.',
-  description: 'Only a manager can edit the task description.',
+  ownerId: 'Only a Task Assigner can reassign a task owner.',
+  priority: 'Only a Task Assigner can change priority.',
+  dueDate: 'Request a deadline change instead — a Task Assigner must approve it.',
+  effortDays: 'Only a Task Assigner can change the effort budget.',
+  startDate: 'Only a Task Assigner can change the start date.',
+  dayPlans: 'Only a Task Assigner can change what each day of the task delivers.',
+  milestoneId: 'Only a Task Assigner can move a task to another milestone.',
+  deliverableId: 'Only a Task Assigner can move a task to another deliverable.',
+  reviewerId: 'Only a Task Assigner can change the reviewer.',
+  supportingMemberIds: 'Only a Task Assigner can change supporting members.',
+  dependencyTaskIds: 'Only a Task Assigner can change dependencies.',
+  title: 'Only a Task Assigner can rename a task.',
+  description: 'Only a Task Assigner can edit the task description.',
 };
 
 export const canWriteTaskField = (role: Role, field: TaskField): boolean =>
@@ -163,7 +163,7 @@ export function assertCanWriteTaskFields(role: Role, fields: readonly string[]):
   throw forbidden(`${[...new Set(reasons)].join(' ')} (fields: ${denied.join(', ')})`);
 }
 
-/** Who an employee counts as "involved" for: owner, supporter or reviewer. */
+/** Who a member counts as "involved" for: owner, supporter or reviewer. */
 export type TaskParticipants = {
   /** `null` for work nobody has been assigned yet. */
   readonly ownerId: string | null;
@@ -187,7 +187,7 @@ export function assertCanViewTask(role: Role, task: TaskParticipants, userId: st
 
 /**
  * Updating is narrower than viewing: a supporting member or reviewer can see a
- * task, but only the owner (or a manager) drives its status and progress.
+ * task, but only the owner (or a Task Assigner) drives its status and progress.
  */
 export const canUpdateTask = (role: Role, task: TaskParticipants, userId: string): boolean =>
   role === Role.Manager ||
@@ -196,14 +196,14 @@ export const canUpdateTask = (role: Role, task: TaskParticipants, userId: string
 
 export function assertCanUpdateTask(role: Role, task: TaskParticipants, userId: string): void {
   if (!canUpdateTask(role, task, userId)) {
-    throw forbidden('Only the task owner, its reviewer or a manager can update this task.');
+    throw forbidden('Only the task owner, its reviewer or a Task Assigner can update this task.');
   }
 }
 
 /**
  * Which workstreams an actor may see.
  *
- * A manager sees the whole plan. An employee sees only the workstreams they
+ * A Task Assigner sees the whole plan. A Member sees only the workstreams they
  * hold work in — the structure around someone else's workstream is as
  * invisible to them as the tasks inside it.
  *
@@ -231,7 +231,7 @@ export const canViewWorkstream = (scope: WorkstreamScope, workstreamId: string):
   scope.kind === 'all' || scope.ids.has(workstreamId);
 
 /**
- * Refuses as "not found" rather than "forbidden" on purpose: an employee has
+ * Refuses as "not found" rather than "forbidden" on purpose: a member has
  * no business learning that a workstream they cannot see exists at all.
  */
 export function assertCanViewWorkstream(scope: WorkstreamScope, workstreamId: string): void {

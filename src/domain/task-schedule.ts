@@ -30,7 +30,7 @@ import type { TaskDayPlan } from './types.ts';
 /** Matches `config.rules.maxTaskEffortDays`; passed in so this stays pure. */
 export const DEFAULT_MAX_TASK_EFFORT_DAYS = 5;
 
-/** Kept for the manager's direct-schedule path. */
+/** Kept for the Task Assigner's direct-schedule path. */
 export const DEFAULT_MAX_TASK_SPAN_DAYS = DEFAULT_MAX_TASK_EFFORT_DAYS;
 
 export const MAX_DAY_OUTCOME_LENGTH = 500;
@@ -205,7 +205,7 @@ export function describeSchedule(start: IsoDate, due: IsoDate): string {
 // --- effort budgets and proposed schedules --------------------------------
 
 /**
- * Validate a manager's effort budget.
+ * Validate a Task Assigner's effort budget.
  *
  * The budget is in WORKING days, which is what "three days of effort" means to
  * the person doing it; a weekend in the middle does not spend any of it.

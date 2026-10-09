@@ -143,7 +143,7 @@ export const addDays = (iso, days) => {
 
 /** Display name for a role. One place, so a new role is never mislabelled. */
 export const roleLabel = (role) =>
-  ({ manager: 'Manager', reviewer: 'Reviewer', employee: 'Employee' })[role] ?? 'Employee';
+  ({ manager: 'Task Assigner', reviewer: 'Reviewer', employee: 'Member' })[role] ?? 'Member';
 
 export const initials = (name) =>
   (name ?? '?')

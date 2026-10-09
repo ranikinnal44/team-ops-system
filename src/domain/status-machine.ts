@@ -9,9 +9,9 @@
  * supplies that relationship along with the role:
  *
  *   participant  anyone who may update the task at all (owner or reviewer)
- *   reviewer     the task's assigned reviewer — or a manager, who is the
+ *   reviewer     the task's assigned reviewer — or a Task Assigner, who is the
  *                escape valve when a reviewer is away
- *   manager      a manager only
+ *   Task Assigner      a Task Assigner only
  *
  * The point of the `reviewer` tier: an owner cannot sign off their own work.
  * Both exits from Review are reviewer-gated, because leaving only the exit to
@@ -36,7 +36,7 @@ export type TransitionRule = {
 
 /**
  * The actor's relationship to the task being moved. `isReviewer` is what the
- * review gate turns on; a manager satisfies it regardless, so an absent
+ * review gate turns on; a Task Assigner satisfies it regardless, so an absent
  * reviewer never deadlocks a task.
  */
 export type TransitionActor = {
@@ -68,7 +68,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   // Sending it back is equally the reviewer's, or an owner would simply
   // withdraw from review and complete the task by another route.
   { from: TaskStatus.Review, to: TaskStatus.InProgress, allow: TransitionAllow.Reviewer },
-  // Reopening finished work is a correction, so it is reserved for managers.
+  // Reopening finished work is a correction, so it is reserved for Task Assigners.
   { from: TaskStatus.Completed, to: TaskStatus.InProgress, allow: TransitionAllow.Manager },
 ];
 

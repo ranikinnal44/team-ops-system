@@ -71,7 +71,7 @@ const createSchema = object({
   priority: optional(nullable(oneOf(PRIORITIES))),
   // Required, unlike every other scheduling field: work with no agreed start
   // and end cannot be chased, so it is refused at the door.
-  // The manager budgets effort; the owner proposes the dates that spend it.
+  // The Task Assigner budgets effort; the owner proposes the dates that spend it.
   effortDays: int({ min: 1, max: 365 }),
   startDate: optional(isoDate()),
   dueDate: optional(isoDate()),

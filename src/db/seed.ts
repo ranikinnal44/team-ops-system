@@ -128,7 +128,7 @@ function printCredentials(db: Database): void {
     const who = `${user.name} (${user.role})`;
     console.log(`     ${who.padEnd(34)} ${user.email.padEnd(28)} ${seedPasscode(user.email)}`);
   }
-  console.log('     Each person has their own; a manager can reset any of them.');
+  console.log('     Each person has their own; a Task Assigner can reset any of them.');
 }
 
 function printTimeline(report: NonNullable<ImportReport['timeline']>): void {

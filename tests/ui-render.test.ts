@@ -227,7 +227,7 @@ describe('views render against real AutoDock data', () => {
     const node = mount();
     await views.manager.managerView(node);
     const text = node.text();
-    assert.match(text, /Manager dashboard/);
+    assert.match(text, /Task Assigner dashboard/);
     assert.match(text, /Conveyor & Dock Integration/);
     assert.match(text, /Requires clarification/);
     assert.match(text, /No Due Date/);
@@ -966,7 +966,7 @@ describe('views render against real AutoDock data', () => {
     const node = mount();
     await views.team.teamView(node);
     const text = node.text();
-    assert.match(text, /manager-only/i);
+    assert.match(text, /Task Assigner/i);
     assert.ok(!text.includes('Add a team member'), 'employees cannot add members');
     for (const name of ['Ashutosh', 'Mallikarjun']) {
       assert.ok(!text.includes(name), 'no colleague is named');
@@ -1126,7 +1126,7 @@ describe('the live Stream 1 project renders', () => {
     const node = mount();
     await views.manager.managerView(node);
     const text = node.text();
-    assert.match(text, /Manager dashboard/);
+    assert.match(text, /Task Assigner dashboard/);
     assert.match(text, /Autonomous Mobile Platform/);
     assert.match(text, /Requires clarification/);
   });

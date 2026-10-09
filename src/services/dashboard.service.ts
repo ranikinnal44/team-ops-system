@@ -102,7 +102,7 @@ export type ExceptionBuckets = {
 };
 
 /**
- * The exception lists the manager works from. A task can legitimately
+ * The exception lists the Task Assigner works from. A task can legitimately
  * appear in more than one (e.g. blocked *and* overdue) — that is the point.
  */
 export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
@@ -175,7 +175,7 @@ export type ClarificationSummary = {
  * so the two that are actually theirs are invisible in it. This is the same
  * data narrowed to the one question "what is blocked on me".
  *
- * Computed for managers too: a manager is usually named reviewer on real work,
+ * Computed for Task Assigners too: a Task Assigner is usually named reviewer on real work,
  * and their own queue was equally buried.
  */
 export type DecisionQueue = {
@@ -221,7 +221,7 @@ export function decisionQueue(
   const reviews = mine.filter((task) => task.status === TaskStatus.Review).sort(byAttention);
 
   // A request is theirs to decide when they review the task it is about. A
-  // manager may decide any of them, but the queue answers "waiting on me",
+  // Task Assigner may decide any of them, but the queue answers "waiting on me",
   // and a request on somebody else's task is waiting on that reviewer.
   const reviewedTaskIds = new Set(mine.map((task) => task.id));
   const deadlineRequests = pendingRequests.filter((request) =>
@@ -358,7 +358,7 @@ export function employeeDashboard(
   targetUserId?: string,
   now = new Date(),
 ): EmployeeDashboard {
-  // Managers may inspect any individual's board; employees only ever see theirs.
+  // Task Assigners may inspect any individual's board; members only ever see theirs.
   const userId = seesAllWork(actor.role) && targetUserId ? targetUserId : actor.id;
   const today = todayDate(now);
   const tomorrow = addDays(today, 1);

@@ -6,7 +6,7 @@ export async function loginView(mount) {
   const state = await api.authState().catch(() => ({ needsBootstrap: false }));
 
   // A system with nobody in it cannot be signed into, so the first screen it
-  // shows is how to create the first manager rather than an empty picker.
+  // shows is how to create the first Task Assigner rather than an empty picker.
   if (state.needsBootstrap) {
     return bootstrapView(mount);
   }
@@ -86,14 +86,14 @@ export async function loginView(mount) {
         el('div', {
           class: 'notice',
           text:
-            'DEMO DATA is loaded. Sign in as the Manager to see the team-wide exception view, or as an Employee to see a personal work queue.',
+            'DEMO DATA is loaded. Sign in as the Task Assigner to see the team-wide exception view, or as a Member to see a personal work queue.',
         }),
       ),
     ),
   );
 }
 
-/** First run: create the manager who will set everything else up. */
+/** First run: create the Task Assigner who will set everything else up. */
 async function bootstrapView(mount) {
   const name = el('input', { type: 'text', placeholder: 'Your name', required: true });
   const email = el('input', { type: 'email', placeholder: 'you@example.com', required: true });
@@ -103,7 +103,7 @@ async function bootstrapView(mount) {
     type: 'password', autocomplete: 'new-password', required: true, minlength: '6',
   });
   const errors = el('div');
-  const submit = el('button', { class: 'primary', type: 'submit', text: 'Create manager and sign in' });
+  const submit = el('button', { class: 'primary', type: 'submit', text: 'Create Task Assigner and sign in' });
 
   const form = el(
     'form',
@@ -147,12 +147,12 @@ async function bootstrapView(mount) {
         'div',
         { class: 'login' },
         el('h1', { text: 'Team Ops' }),
-        el('div', { class: 'sub', text: 'No one has been set up yet — start by creating yourself as manager.' }),
+        el('div', { class: 'sub', text: 'No one has been set up yet — start by creating yourself as Task Assigner.' }),
         card(null, form),
         el('div', {
           class: 'notice',
           text:
-            'You will be a manager, so you can create the project, its workstreams and milestones, ' +
+            'You will be a Task Assigner, so you can create the project, its workstreams and milestones, ' +
             'and add the rest of the team. Everyone signs in with this same shared passcode.',
         }),
       ),

@@ -13,7 +13,7 @@ const bootstrapSchema = object({
   email: str({ max: 200 }),
   /** Authorises the bootstrap; shared, and only useful on an empty system. */
   joinCode: str({ max: 200, trim: false }),
-  /** Becomes this manager's own passcode. */
+  /** Becomes this Task Assigner's own passcode. */
   passcode: str({ min: MIN_PASSCODE_LENGTH, max: MAX_PASSCODE_LENGTH, trim: false }),
   title: optional(nullable(str({ max: 120 }))),
 });
@@ -37,7 +37,7 @@ export const authRoutes: Route[] = [
     }),
   },
   {
-    // Lets the login screen offer to create the first manager on a fresh system.
+    // Lets the login screen offer to create the first Task Assigner on a fresh system.
     method: 'GET',
     path: '/api/auth/state',
     auth: false,

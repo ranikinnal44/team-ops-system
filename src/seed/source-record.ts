@@ -6,7 +6,7 @@
  *
  *   - Values the source states are preserved verbatim.
  *   - Values the source does NOT state are left null and raised as a
- *     clarification for a manager. Nothing is guessed.
+ *     clarification for a Task Assigner. Nothing is guessed.
  *   - The raw owner label, raw status text and source date are kept alongside
  *     the mapped values, so an import decision can always be audited.
  *

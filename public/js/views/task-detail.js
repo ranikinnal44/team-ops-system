@@ -586,7 +586,7 @@ export async function taskDetailView(mount, params, taskId) {
   );
 
   // --- schedule ------------------------------------------------------------
-  // A manager edits the window and the day outcomes together, because the two
+  // A Task Assigner edits the window and the day outcomes together, because the two
   // are one decision: stretching a task to three days creates two more days
   // that have to say what they deliver.
   const pendingRequest = data.deadlineRequests.find((r) => r.status === 'pending');
@@ -660,7 +660,7 @@ export async function taskDetailView(mount, params, taskId) {
                 ? days.map((day) => ({ date: day, outcome: (outcomeByDate.get(day) ?? '').trim() }))
                 : [],
           });
-          // A manager or the reviewer is the person who would approve this
+          // A Task Assigner or the reviewer is the person who would approve this
           // anyway, so their own submission is agreed in the same action
           // rather than parked in a queue addressed to themselves.
           if (isManager || isReviewer) {
@@ -728,14 +728,14 @@ export async function taskDetailView(mount, params, taskId) {
       )
     : noDeadlineYet
     ? el('div', { class: 'muted small',
-        text: 'This task has no deadline yet. A manager needs to set one before a change can be requested.' })
+        text: 'This task has no deadline yet. A Task Assigner needs to set one before a change can be requested.' })
     : pendingRequest
     ? el(
         'div',
         {},
         el('div', { class: 'small muted', text: `Requested by ${pendingRequest.requestedByName}: ${formatDate(pendingRequest.currentDueDate)} → ${formatDate(pendingRequest.requestedDueDate)}` }),
         el('div', { class: 'small', style: 'margin:6px 0', text: pendingRequest.reason }),
-        el('div', { class: 'small muted', text: 'Awaiting a manager decision.' }),
+        el('div', { class: 'small muted', text: 'Awaiting a Task Assigner decision.' }),
       )
     : el(
         'form',

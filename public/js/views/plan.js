@@ -76,8 +76,8 @@ export async function planView(mount) {
   const isManager = session.user?.role === 'manager';
   if (!isManager) {
     mount.replaceChildren(
-      pageHead('Plan', 'Manager only'),
-      emptyState('Only a manager can change the plan', 'Ask your manager to add or edit structure.'),
+      pageHead('Plan', 'Task Assigners only'),
+      emptyState('Only a Task Assigner can change the plan', 'Ask your Task Assigner to add or edit structure.'),
     );
     return;
   }

@@ -1,4 +1,4 @@
-/** Screen 6 — Create task. Manager only. */
+/** Screen 6 — Create task. Task Assigner only. */
 import { api, session } from '../api.js';
 import {
   el,
@@ -17,8 +17,8 @@ import {
 export async function createTaskView(mount) {
   if (session.user?.role !== 'manager') {
     mount.replaceChildren(
-      pageHead('Create task', 'Manager only'),
-      card(null, el('div', { class: 'muted', text: 'Only a manager can create tasks. Ask your manager to add it.' })),
+      pageHead('Create task', 'Task Assigners only'),
+      card(null, el('div', { class: 'muted', text: 'Only a Task Assigner can create tasks. Ask your Task Assigner to add it.' })),
     );
     return;
   }
@@ -61,7 +61,7 @@ export async function createTaskView(mount) {
   // request is even made. The server checks it again regardless.
   const startInput = el('input', { type: 'date', name: 'startDate', value: '' });
   const dueInput = el('input', { type: 'date', name: 'dueDate', value: '' });
-  // The manager's unit is effort, not dates. The owner proposes the days that
+  // The Task Assigner's unit is effort, not dates. The owner proposes the days that
   // spend this budget, and the reviewer agrees them.
   const effortInput = el('input', {
     type: 'number',
@@ -193,7 +193,7 @@ export async function createTaskView(mount) {
             supportingMemberIds: picked(supportBox),
             priority: prioritySel.value || null,
             effortDays: Number(effortInput.value),
-            // Omitted unless the manager is scheduling the task directly;
+            // Omitted unless the Task Assigner is scheduling the task directly;
             // normally the owner proposes these.
             ...(startInput.value && dueInput.value
               ? { startDate: startInput.value, dueDate: dueInput.value }

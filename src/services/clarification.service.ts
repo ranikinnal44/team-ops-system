@@ -2,7 +2,7 @@
  * The "Requires Clarification" queue.
  *
  * Everything the import could not establish lands here instead of being
- * defaulted. Managers work the queue; employees see only items on their own
+ * defaulted. Task Assigners work the queue; members see only items on their own
  * tasks, so the list is actionable rather than a wall of project-wide noise.
  */
 import type { Database } from '../db/connection.ts';
@@ -29,7 +29,7 @@ export type ClarificationQueue = {
 };
 
 /**
- * Grouped by reason, so a manager can clear one *kind* of gap in one pass —
+ * Grouped by reason, so a Task Assigner can clear one *kind* of gap in one pass —
  * setting 32 deadlines is one sitting, not 32 separate decisions.
  */
 export function clarificationQueue(
@@ -81,7 +81,7 @@ export function clarificationQueue(
 }
 
 /**
- * Dismiss an item without changing the task — for cases a manager judges to be
+ * Dismiss an item without changing the task — for cases a Task Assigner judges to be
  * fine as they stand (a duplicate that is genuinely two pieces of work, say).
  * Filling the gap for real resolves it automatically from `updateTask`.
  */

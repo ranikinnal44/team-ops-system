@@ -179,7 +179,7 @@ export function applyInPlaceMigrations(db: Database): void {
   }
 
   // --- v9: 'reviewer' joins the role vocabulary ---------------------------
-  // The CHECK on users.role listed only manager and employee, so an existing
+  // The CHECK on users.role listed only Task Assigner and member, so an existing
   // database would refuse the new role outright.
   if (hasTable(db, 'users') && !ddlMentions(db, 'users', "'reviewer'")) {
     rebuildTable(db, 'users');

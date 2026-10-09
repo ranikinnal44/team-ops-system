@@ -210,7 +210,7 @@ export function importAutoDock(
           // stands in as start and due so the record can exist at all — which
           // is exactly what the MISSING_DUE_DATE clarification below says. A
           // stand-in is not an agreement, so these arrive unscheduled and a
-          // manager still has to commit to real dates.
+          // Task Assigner still has to commit to real dates.
           effortDays: null,
           scheduleState: ScheduleState.Unset,
           // No baseline: nobody committed to this date, so there is nothing to

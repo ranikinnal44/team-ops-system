@@ -1,7 +1,7 @@
 /**
  * Screen 9 — Team.
  *
- * The roster everyone can read, and that a manager can add to and edit. Any
+ * The roster everyone can read, and that a Task Assigner can add to and edit. Any
  * change re-renders the whole screen from the server rather than patching the
  * DOM, so what is on screen is always what the API actually stored.
  */
@@ -11,23 +11,23 @@ import {
 } from '../ui.js';
 
 const ROLE_OPTIONS = [
-  { value: 'employee', label: 'Employee' },
+  { value: 'employee', label: 'Member' },
   { value: 'reviewer', label: 'Reviewer' },
-  { value: 'manager', label: 'Manager' },
+  { value: 'manager', label: 'Task Assigner' },
 ];
 
 const roleBadge = (role) => el('span', { class: `badge role-${role}`, text: roleLabel(role) });
 
 export async function teamView(mount) {
   const isManager = session.user?.role === 'manager';
-  // The router keeps non-managers out, but a pasted link should not render a
+  // The router keeps other roles out, but a pasted link should not render a
   // half-page and then fail on the fetch.
   if (!isManager) {
     mount.replaceChildren(
-      pageHead('Team', 'Manager only'),
+      pageHead('Team', 'Task Assigners only'),
       emptyState(
-        'The team roster is manager-only',
-        'Ask your manager who to speak to. The people you work with are named on the tasks you share.',
+        'The team roster is Task Assigner-only',
+        'Ask your Task Assigner who to speak to. The people you work with are named on the tasks you share.',
       ),
     );
     return;
@@ -40,7 +40,7 @@ export async function teamView(mount) {
     mount.replaceChildren(...screen(members));
   }
 
-  /** The "add a team member" form. Manager only. */
+  /** The "add a team member" form. Task Assigner only. */
   function addForm() {
     const name = el('input', { type: 'text', required: true, placeholder: 'Full name' });
     const email = el('input', { type: 'email', required: true, placeholder: 'name@example.com' });
@@ -77,7 +77,7 @@ export async function teamView(mount) {
       errors,
       el('div', { class: 'grid-2' }, field('Name', name), field('Email', email, 'Used to sign in. Must be unique.')),
       el('div', { class: 'grid-2' },
-        field('Role', role, 'Managers plan the work; reviewers confirm dates and sign off what is done.'),
+        field('Role', role, 'Task Assigners plan the work; reviewers confirm dates and sign off what is done.'),
         field('Designation', title, 'Optional — what they do on the team.')),
       field('Passcode', passcode,
         'Theirs alone, and how they sign in. Tell it to them — nobody can read it back afterwards, ' +
@@ -88,7 +88,7 @@ export async function teamView(mount) {
     return card('Add a team member', form);
   }
 
-  /** A member row switched into edit mode. Manager only. */
+  /** A member row switched into edit mode. Task Assigner only. */
   function editRow(member) {
     const name = el('input', { type: 'text', value: member.name });
     const role = select(ROLE_OPTIONS, member.role);
@@ -199,7 +199,7 @@ export async function teamView(mount) {
       ),
     );
 
-    // A manager can open anyone's board; an employee only ever sees their own.
+    // A Task Assigner can open anyone's board; a member only ever sees their own.
     const canOpenBoard = isManager || member.id === session.user?.id;
 
     return el(
@@ -287,9 +287,9 @@ export async function teamView(mount) {
       'div',
       { class: 'stats' },
       stat('Members', active.length),
-      stat('Managers', active.filter((m) => m.role === 'manager').length),
+      stat('Task Assigners', active.filter((m) => m.role === 'manager').length),
       stat('Reviewers', active.filter((m) => m.role === 'reviewer').length),
-      stat('Employees', active.filter((m) => m.role === 'employee').length),
+      stat('Members', active.filter((m) => m.role === 'employee').length),
       ...(isManager
         ? [stat('Open tasks', active.reduce((sum, m) => sum + (m.openTasks ?? 0), 0))]
         : []),

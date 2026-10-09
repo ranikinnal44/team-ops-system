@@ -144,7 +144,7 @@ export const isBlocked = (task: EvaluableTask): boolean => task.status === TaskS
 export const isDueToday = (task: EvaluableTask, today: IsoDate = todayDate()): boolean =>
   isOpen(task) && task.dueDate === today;
 
-/** No agreed deadline AND still open — the manager needs to set one. */
+/** No agreed deadline AND still open — the Task Assigner needs to set one. */
 export const needsDeadline = (task: EvaluableTask): boolean => isOpen(task) && !hasDeadline(task);
 
 export const isDueWithin = (
@@ -183,12 +183,12 @@ export const hasFlag = (flags: readonly ExceptionFlag[], flag: ExceptionFlag): b
 
 /**
  * Attention score — higher means it needs looking at sooner. Used to order the
- * employee's default view and the manager's exception lists so the most
+ * member's default view and the Task Assigner's exception lists so the most
  * important item is always first.
  */
 /**
  * Attention score -- higher means it needs looking at sooner. Used to order the
- * employee's default view and the manager's exception lists so the most
+ * member's default view and the Task Assigner's exception lists so the most
  * important item is always first.
  *
  * An unassigned priority contributes nothing rather than being scored as if it

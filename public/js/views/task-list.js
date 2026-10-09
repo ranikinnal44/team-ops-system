@@ -175,7 +175,7 @@ export async function taskListView(mount, params) {
   });
 
   const refine = [statusSel, prioritySel, exceptionSel, gapSel, workstreamSel];
-  // Picking a person by name needs the roster, which is manager-only. A
+  // Picking a person by name needs the roster, which is Task-Assigner-only. A
   // reviewer still reaches their own queue through the lenses below, which
   // ask for nobody but the signed-in user.
   if (isManager) {
@@ -302,8 +302,8 @@ export async function taskListView(mount, params) {
   // when every row would show the same name.
   /* --- bulk assignment ---------------------------------------------------
      Twenty-eight tasks assigned one at a time is twenty-eight page loads,
-     which is the reason the plan sat unassigned. Managers get tick boxes and
-     an action bar; employees never see either. */
+     which is the reason the plan sat unassigned. Task Assigners get tick boxes and
+     an action bar; members never see either. */
   const selection = isManager ? new Set() : undefined;
   let bulkBar = null;
   /** taskId -> the row and tick box built for it, so repainting needs no lookup. */

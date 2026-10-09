@@ -2,7 +2,7 @@
  * Data-quality report.
  *
  * Prints what the import could NOT establish from the source, grouped so a
- * manager can work through it. Read-only: it fixes nothing and assumes nothing.
+ * Task Assigner can work through it. Read-only: it fixes nothing and assumes nothing.
  *
  *   npm run import:report
  */

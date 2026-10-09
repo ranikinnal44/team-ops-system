@@ -3,7 +3,7 @@
  *
  * Stored as a scrypt hash with a per-user salt, never in the clear: a database
  * file that leaks should not hand over working credentials, and nobody —
- * including a manager resetting someone's code — should be able to read back
+ * including a Task Assigner resetting someone's code — should be able to read back
  * what another person chose.
  *
  * Still not production authentication: there is no rate limiting, no lockout

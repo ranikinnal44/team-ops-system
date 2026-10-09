@@ -3,7 +3,7 @@
  *
  * Reading is open to everyone — the whole team benefits from knowing an
  * eight-week item is about to become the critical path. Changing an order's
- * state is manager-only, like every other commitment in the system.
+ * state is Task-Assigner-only, like every other commitment in the system.
  */
 import type { Database } from '../db/connection.ts';
 import * as supplyRepo from '../repositories/supply.repo.ts';

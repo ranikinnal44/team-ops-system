@@ -7,7 +7,7 @@
  * leaked code no longer signs in as everybody.
  *
  * `config.joinCode` is a different thing: it authorises creating the FIRST
- * manager on an empty system, where there is nobody to grant anything yet.
+ * Task Assigner on an empty system, where there is nobody to grant anything yet.
  *
  * Still NOT production authentication — no rate limiting, no lockout, no
  * second factor. See the README's Known Limitations.
@@ -156,7 +156,7 @@ export const needsBootstrap = (db: Database): boolean =>
   userRepo.listUsers(db, { activeOnly: false }).length === 0;
 
 /**
- * Create the first manager on an empty system.
+ * Create the first Task Assigner on an empty system.
  *
  * Guarded two ways: it refuses once any user exists, and it still demands the
  * shared passcode, so an exposed port is no easier to walk into than before.
@@ -168,7 +168,7 @@ export function bootstrapFirstManager(
     email: string;
     /** Authorises the bootstrap. */
     joinCode: string;
-    /** Becomes this manager's own passcode. */
+    /** Becomes this Task Assigner's own passcode. */
     passcode: string;
     title?: string | null;
   },
@@ -195,7 +195,7 @@ export function bootstrapFirstManager(
     kind: authEventRepo.AuthEventKind.Bootstrap,
     email: user.email,
     userId: user.id,
-    detail: 'first manager created',
+    detail: 'first Task Assigner created',
   });
   return { session, user };
 }
