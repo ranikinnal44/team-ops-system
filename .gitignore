@@ -5,3 +5,6 @@ data/*.db-wal
 data/*.db-shm
 .env
 *.log
+backups/
+certs/
+logs/
