@@ -156,6 +156,9 @@ export const taskRoutes: Route[] = [
 
       const result = tasks.listTasks(db, actor, {
         ...(query.get('ownerId') ? { ownerId: query.get('ownerId') as string } : {}),
+        // A reviewer's queue: the repository has always supported this, but
+        // without it on the route there was no way to ask "what is waiting on me".
+        ...(query.get('reviewerId') ? { reviewerId: query.get('reviewerId') as string } : {}),
         ...(query.get('projectId') ? { projectId: query.get('projectId') as string } : {}),
         ...(query.get('workstreamId') ? { workstreamId: query.get('workstreamId') as string } : {}),
         ...(query.get('milestoneId') ? { milestoneId: query.get('milestoneId') as string } : {}),

@@ -832,3 +832,178 @@ describe('invariant: 100% means reviewed', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The reviewer's queue.
+ *
+ * A reviewer is handed the whole board so they can find what is waiting on
+ * them — which is precisely why they could not find it: their two proposals
+ * sat in a list of everybody's, and there was no filter that said "mine".
+ */
+describe('finding what is waiting on you', () => {
+  let cast: Cast;
+  before(async () => (cast = await assemble()));
+  after(async () => cast.server.close());
+
+  /** Drives a task to a proposed-but-undecided schedule. */
+  async function proposed(reviewerId: string): Promise<string> {
+    const { id } = await newTask(cast, { ownerId: cast.ids.owner, reviewerId, effortDays: 1 });
+    const day = nextMonday();
+    await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
+      token: cast.owner,
+      body: { startDate: day, dueDate: day },
+    });
+    return id;
+  }
+
+  /** Drives a task all the way to submitted-for-review. */
+  async function submitted(reviewerId: string, decider: string): Promise<string> {
+    const id = await proposed(reviewerId);
+    await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
+      token: decider,
+      body: { approve: true },
+    });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'in_progress' },
+    });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'review' },
+    });
+    return id;
+  }
+
+  test('the task list can be filtered to one reviewer', async () => {
+    const mine = await proposed(cast.ids.reviewer);
+    const theirs = await proposed(cast.ids.manager);
+
+    const filtered = await cast.server.request(
+      `GET`,
+      `/api/tasks?reviewerId=${cast.ids.reviewer}`,
+      { token: cast.reviewer },
+    );
+    assert.equal(filtered.status, 200);
+    const ids = filtered.body.map((t: any) => t.id);
+    assert.ok(ids.includes(mine), 'a task they review should be in it');
+    assert.ok(!ids.includes(theirs), 'a task somebody else reviews should not');
+    assert.ok(
+      filtered.body.every((t: any) => t.reviewerId === cast.ids.reviewer),
+      'nothing else should come back',
+    );
+  });
+
+  test('the filter cannot widen what an employee is allowed to see', async () => {
+    const theirs = await proposed(cast.ids.manager);
+    const asEmployee = await cast.server.request(
+      'GET',
+      `/api/tasks?reviewerId=${cast.ids.manager}`,
+      { token: cast.outsider },
+    );
+    assert.equal(asEmployee.status, 200);
+    assert.ok(
+      !asEmployee.body.some((t: any) => t.id === theirs),
+      'an employee must not reach a task through the reviewer filter that they could not reach without it',
+    );
+  });
+
+  test('the dashboard carries a queue of only this reviewer’s decisions', async () => {
+    const myProposal = await proposed(cast.ids.reviewer);
+    const mySubmission = await submitted(cast.ids.reviewer, cast.reviewer);
+    const theirProposal = await proposed(cast.ids.manager);
+
+    const board = await cast.server.request('GET', '/api/dashboard/manager', {
+      token: cast.reviewer,
+    });
+    assert.equal(board.status, 200);
+    const queue = board.body.awaitingMyDecision;
+
+    assert.ok(
+      queue.schedules.some((t: any) => t.id === myProposal),
+      'dates proposed to them should be in their queue',
+    );
+    assert.ok(
+      queue.reviews.some((t: any) => t.id === mySubmission),
+      'work submitted to them should be in their queue',
+    );
+    assert.ok(
+      !queue.schedules.some((t: any) => t.id === theirProposal),
+      'somebody else’s proposal must not be',
+    );
+    assert.equal(
+      queue.total,
+      queue.schedules.length + queue.reviews.length + queue.deadlineRequests.length,
+    );
+  });
+
+  test('the board-wide buckets stay board-wide — the queue narrows, it does not hide', async () => {
+    const theirProposal = await proposed(cast.ids.manager);
+    const board = await cast.server.request('GET', '/api/dashboard/manager', {
+      token: cast.reviewer,
+    });
+    assert.ok(
+      board.body.exceptions.scheduleAwaitingReview.some((t: any) => t.id === theirProposal),
+      'a reviewer still sees the whole plan; they simply also get their own queue',
+    );
+  });
+
+  test('extension requests are queued to the reviewer of the task they are about', async () => {
+    // One task reviewed by our reviewer, one by the manager — both with a
+    // pending request against them.
+    const mine = await submitted(cast.ids.reviewer, cast.reviewer);
+    await cast.server.request('PATCH', `/api/tasks/${mine}`, {
+      token: cast.reviewer,
+      body: { status: 'in_progress' },
+    });
+    const day = nextMonday();
+    const askedMine = await cast.server.request('POST', `/api/tasks/${mine}/deadline-requests`, {
+      token: cast.owner,
+      body: { requestedDueDate: addDays(day, 1), reason: 'Rig slipped.' },
+    });
+    assert.equal(askedMine.status, 201, JSON.stringify(askedMine.body));
+
+    const theirs = await proposed(cast.ids.manager);
+    await cast.server.request('POST', `/api/tasks/${theirs}/schedule/decision`, {
+      token: cast.manager,
+      body: { approve: true },
+    });
+    const askedTheirs = await cast.server.request(
+      'POST',
+      `/api/tasks/${theirs}/deadline-requests`,
+      { token: cast.owner, body: { requestedDueDate: addDays(day, 1), reason: 'Also slipped.' } },
+    );
+    assert.equal(askedTheirs.status, 201);
+
+    const board = await cast.server.request('GET', '/api/dashboard/manager', {
+      token: cast.reviewer,
+    });
+    const queued = board.body.awaitingMyDecision.deadlineRequests.map((r: any) => r.id);
+    assert.ok(queued.includes(askedMine.body.id), 'the request on their task should be queued');
+    assert.ok(
+      !queued.includes(askedTheirs.body.id),
+      'a request they are not allowed to decide must not be',
+    );
+
+    // And the queue agrees with what the API will actually let them do.
+    for (const id of queued) {
+      const decided = await cast.server.request(`POST`, `/api/deadline-requests/${id}/decision`, {
+        token: cast.reviewer,
+        body: { approve: true, note: 'Fine.' },
+      });
+      assert.equal(decided.status, 200, 'every queued request must be one they can decide');
+    }
+  });
+
+  test('a manager gets a queue of their own, for the work they review', async () => {
+    const theirs = await proposed(cast.ids.manager);
+    const board = await cast.server.request('GET', '/api/dashboard/manager', {
+      token: cast.manager,
+    });
+    assert.ok(
+      board.body.awaitingMyDecision.schedules.some((t: any) => t.id === theirs),
+      'a manager named as reviewer should see it waiting on them too',
+    );
+  });
+});

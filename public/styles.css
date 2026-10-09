@@ -879,6 +879,25 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-weight: 600;
 }
 
+/* The reviewer's lenses. A toggle, so the active one reads as pressed rather
+   than as just another button that was clicked a moment ago. */
+.filterbar .lens {
+  font-size: 12.5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.filterbar .lens:hover { border-color: var(--accent); color: var(--text); }
+.filterbar .lens.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-solid);
+  font-weight: 600;
+}
+
 .result-head {
   display: flex;
   align-items: baseline;
@@ -1255,3 +1274,18 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .inline-form-body .field { margin-bottom: 10px; }
 
+/* The personal decision queue on the dashboard. Each group is a different kind
+   of decision, so they are separated rather than run together as one list. */
+.queue-group + .queue-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.queue-head {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}

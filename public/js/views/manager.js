@@ -1,5 +1,5 @@
 /** Screen 2 — Manager dashboard: summary, exceptions, people, upcoming. */
-import { api } from '../api.js';
+import { api, session } from '../api.js';
 import {
   el, card, tightCard, listCard, exceptionSection, exceptionGrid, stat, taskRows, pageHead,
   formatDate, toast,
@@ -225,57 +225,107 @@ export async function managerView(mount) {
     board.upcoming.length,
   );
 
-  const requestsBody = board.pendingDeadlineRequests.length
-    ? el(
+  /**
+   * A pending extension request.
+   *
+   * `actionable` decides whether the buttons are drawn at all: a reviewer may
+   * only decide requests on tasks they review, and offering Approve on the
+   * rest produced a button that answered with an error.
+   */
+  const requestCard = (request, actionable) =>
+    el(
+      'div',
+      { class: 'comment' },
+      el(
         'div',
-        {},
-        board.pendingDeadlineRequests.map((request) =>
+        { class: 'head' },
+        el('a', { class: 'ref', href: `#/tasks/${request.taskId}`, text: request.taskRef }),
+        el('span', { class: 'author', text: request.requestedByName }),
+        el('span', { class: 'when', text: `${formatDate(request.currentDueDate)} → ${formatDate(request.requestedDueDate)}` }),
+      ),
+      el('div', { class: 'body', text: request.reason }),
+      actionable
+        ? el(
+            'div',
+            { class: 'row', style: 'margin-top:8px' },
+            el('button', {
+              class: 'primary',
+              text: 'Approve',
+              onclick: async (event) => {
+                event.target.disabled = true;
+                try {
+                  await api.decideDeadline(request.id, true, 'Approved from the dashboard.');
+                  toast('Deadline updated');
+                  managerView(mount);
+                } catch (error) {
+                  toast(error.message, true);
+                  event.target.disabled = false;
+                }
+              },
+            }),
+            el('button', {
+              class: 'danger',
+              text: 'Reject',
+              onclick: async (event) => {
+                event.target.disabled = true;
+                try {
+                  await api.decideDeadline(request.id, false, 'Rejected from the dashboard.');
+                  toast('Request rejected');
+                  managerView(mount);
+                } catch (error) {
+                  toast(error.message, true);
+                  event.target.disabled = false;
+                }
+              },
+            }),
+          )
+        : el('div', { class: 'small muted', style: 'margin-top:6px',
+            text: 'Only this task\u2019s reviewer can decide this one.' }),
+    );
+
+  /**
+   * What is blocked on the person reading this, and nobody else.
+   *
+   * The exception grid below is board-wide on purpose, which is exactly why it
+   * could not answer "what is waiting on me": a reviewer's two proposals sat
+   * in a list of everybody's. This leads the page because every row in it is
+   * somebody who cannot move until it is cleared.
+   */
+  const queue = board.awaitingMyDecision ?? { schedules: [], reviews: [], deadlineRequests: [], total: 0 };
+  const queueIds = new Set(queue.deadlineRequests.map((r) => r.id));
+
+  const waitingOnYou =
+    queue.total === 0
+      ? null
+      : tightCard(
+          `Waiting on you (${queue.total})`,
           el(
             'div',
-            { class: 'comment' },
-            el(
-              'div',
-              { class: 'head' },
-              el('a', { class: 'ref', href: `#/tasks/${request.taskId}`, text: request.taskRef }),
-              el('span', { class: 'author', text: request.requestedByName }),
-              el('span', { class: 'when', text: `${formatDate(request.currentDueDate)} → ${formatDate(request.requestedDueDate)}` }),
-            ),
-            el('div', { class: 'body', text: request.reason }),
-            el(
-              'div',
-              { class: 'row', style: 'margin-top:8px' },
-              el('button', {
-                class: 'primary',
-                text: 'Approve',
-                onclick: async (event) => {
-                  event.target.disabled = true;
-                  try {
-                    await api.decideDeadline(request.id, true, 'Approved from the dashboard.');
-                    toast('Deadline updated');
-                    managerView(mount);
-                  } catch (error) {
-                    toast(error.message, true);
-                  }
-                },
-              }),
-              el('button', {
-                class: 'danger',
-                text: 'Reject',
-                onclick: async (event) => {
-                  event.target.disabled = true;
-                  try {
-                    await api.decideDeadline(request.id, false, 'Rejected from the dashboard.');
-                    toast('Request rejected');
-                    managerView(mount);
-                  } catch (error) {
-                    toast(error.message, true);
-                  }
-                },
-              }),
-            ),
+            {},
+            queue.schedules.length
+              ? el('div', { class: 'queue-group' },
+                  el('div', { class: 'queue-head', text: 'Dates to agree — nothing starts until you do' }),
+                  el('div', { class: 'task-list' }, taskRows(queue.schedules)))
+              : null,
+            queue.reviews.length
+              ? el('div', { class: 'queue-group' },
+                  el('div', { class: 'queue-head', text: 'Work to sign off' }),
+                  el('div', { class: 'task-list' }, taskRows(queue.reviews)))
+              : null,
+            queue.deadlineRequests.length
+              ? el('div', { class: 'queue-group' },
+                  el('div', { class: 'queue-head', text: 'Extensions to decide' }),
+                  ...queue.deadlineRequests.map((request) => requestCard(request, true)))
+              : null,
           ),
-        ),
-      )
+        );
+
+  // The board-wide card keeps the rest: anything already in the personal queue
+  // above would otherwise be shown, and answerable, twice.
+  const isManager = session.user?.role === 'manager';
+  const otherRequests = board.pendingDeadlineRequests.filter((r) => !queueIds.has(r.id));
+  const requestsBody = otherRequests.length
+    ? el('div', {}, otherRequests.map((request) => requestCard(request, isManager)))
     : el('div', { class: 'muted small', text: 'No deadline changes are awaiting a decision.' });
 
   mount.replaceChildren(
@@ -287,6 +337,7 @@ export async function managerView(mount) {
     summary,
     el('div', { style: 'height:16px' }),
     // Each of these is dropped rather than rendered empty.
+    ...(waitingOnYou ? [waitingOnYou, el('div', { style: 'height:16px' })] : []),
     ...(setupPanel ? [setupPanel, el('div', { style: 'height:16px' })] : []),
     ...(board.needsAttention.length
       ? [
@@ -297,9 +348,7 @@ export async function managerView(mount) {
     exceptions,
     el('div', { style: 'height:16px' }),
     ...(board.clarifications.total > 0 ? [clarificationCard] : []),
-    ...(board.pendingDeadlineRequests.length > 0
-      ? [card('Deadline change requests', requestsBody)]
-      : []),
+    ...(otherRequests.length > 0 ? [card('Deadline change requests', requestsBody)] : []),
     workstreams,
     ...(board.byOwner.length > 0 ? [people] : []),
     ...(board.upcoming.length > 0 ? [upcoming] : []),

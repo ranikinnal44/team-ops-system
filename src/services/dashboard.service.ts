@@ -17,6 +17,7 @@ import {
     ExceptionFlag,
   PRIORITY_RANK,
   DeadlineRequestStatus,
+  ScheduleState,
   CLARIFICATION_LABEL,
   type ClarificationCode,
 } from '../domain/enums.ts';
@@ -165,6 +166,29 @@ export type ClarificationSummary = {
   byCode: { code: ClarificationCode; label: string; count: number }[];
 };
 
+/**
+ * The decisions waiting on the person reading the board, and nobody else.
+ *
+ * The rest of this dashboard is deliberately board-wide: a reviewer sees every
+ * task because they cannot review what they cannot find. That breadth is also
+ * the problem — "Dates awaiting review" lists every proposal in the project,
+ * so the two that are actually theirs are invisible in it. This is the same
+ * data narrowed to the one question "what is blocked on me".
+ *
+ * Computed for managers too: a manager is usually named reviewer on real work,
+ * and their own queue was equally buried.
+ */
+export type DecisionQueue = {
+  /** Proposed schedules this person has to agree or send back. */
+  schedules: TaskView[];
+  /** Work submitted for their sign-off. */
+  reviews: TaskView[];
+  /** Extension requests on tasks they review. */
+  deadlineRequests: DeadlineChangeRequest[];
+  /** Everything above, counted once — the badge the UI shows. */
+  total: number;
+};
+
 export type ManagerDashboard = {
   generatedFor: IsoDate;
   summary: Summary;
@@ -173,9 +197,44 @@ export type ManagerDashboard = {
   byWorkstream: WorkstreamRollup[];
   upcoming: TaskView[];
   pendingDeadlineRequests: DeadlineChangeRequest[];
+  awaitingMyDecision: DecisionQueue;
   needsAttention: TaskView[];
   clarifications: ClarificationSummary;
 };
+
+/**
+ * Narrows an already-computed board to the decisions one person owns.
+ *
+ * Takes the task views rather than the database: these are the same rows the
+ * rest of the dashboard is built from, so the queue can never disagree with
+ * the buckets it is drawn out of.
+ */
+export function decisionQueue(
+  tasks: readonly TaskView[],
+  pendingRequests: readonly DeadlineChangeRequest[],
+  actor: Actor,
+): DecisionQueue {
+  const mine = tasks.filter((task) => task.reviewerId === actor.id);
+  const schedules = mine
+    .filter((task) => task.scheduleState === ScheduleState.Proposed)
+    .sort(byAttention);
+  const reviews = mine.filter((task) => task.status === TaskStatus.Review).sort(byAttention);
+
+  // A request is theirs to decide when they review the task it is about. A
+  // manager may decide any of them, but the queue answers "waiting on me",
+  // and a request on somebody else's task is waiting on that reviewer.
+  const reviewedTaskIds = new Set(mine.map((task) => task.id));
+  const deadlineRequests = pendingRequests.filter((request) =>
+    reviewedTaskIds.has(request.taskId),
+  );
+
+  return {
+    schedules,
+    reviews,
+    deadlineRequests,
+    total: schedules.length + reviews.length + deadlineRequests.length,
+  };
+}
 
 export function managerDashboard(db: Database, actor: Actor, now = new Date()): ManagerDashboard {
   assertCan(actor.role, Capability.ViewTeamProgress);
@@ -246,7 +305,9 @@ export function managerDashboard(db: Database, actor: Actor, now = new Date()): 
     .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
 
   const clarificationCounts = clarificationRepo.countByCode(db, { unresolvedOnly: true });
-
+  const pending = deadlineRepo.listDeadlineRequests(db, {
+    status: DeadlineRequestStatus.Pending,
+  });
 
   return {
     generatedFor: today,
@@ -255,9 +316,8 @@ export function managerDashboard(db: Database, actor: Actor, now = new Date()): 
     byOwner,
     byWorkstream,
     upcoming,
-    pendingDeadlineRequests: deadlineRepo.listDeadlineRequests(db, {
-      status: DeadlineRequestStatus.Pending,
-    }),
+    pendingDeadlineRequests: pending,
+    awaitingMyDecision: decisionQueue(tasks, pending, actor),
     needsAttention: openTasks.filter((t) => t.exceptions.length > 0).sort(byAttention).slice(0, 12),
     clarifications: {
       total: clarificationRepo.countUnresolved(db),

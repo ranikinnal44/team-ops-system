@@ -36,6 +36,9 @@ const EXCEPTION_OPTIONS = [
   { value: 'BLOCKED', label: 'Blocked' },
   { value: 'DUE_SOON', label: 'Due within 2 days' },
   { value: 'NO_RECENT_UPDATE', label: 'No recent update' },
+  { value: 'SCHEDULE_AWAITING_REVIEW', label: 'Dates awaiting review' },
+  { value: 'SCHEDULE_NOT_SET', label: 'Needs dates' },
+  { value: 'MISSING_DAILY_UPDATE', label: 'No daily outcome' },
 ];
 
 const GAP_OPTIONS = [
@@ -95,6 +98,8 @@ function legend(columns) {
 
 export async function taskListView(mount, params) {
   const isManager = session.user?.role === 'manager';
+  // A reviewer is handed the whole board, so they get the same lenses onto it.
+  const seesAll = isManager || session.user?.role === 'reviewer';
 
   const filters = {
     search: params.get('search') ?? '',
@@ -102,6 +107,7 @@ export async function taskListView(mount, params) {
     priority: params.get('priority') ?? '',
     exception: params.get('exception') ?? '',
     ownerId: params.get('ownerId') ?? '',
+    reviewerId: params.get('reviewerId') ?? '',
     workstreamId: params.get('workstreamId') ?? '',
     sort: params.get('sort') ?? 'attention',
   };
@@ -118,7 +124,7 @@ export async function taskListView(mount, params) {
 
   const [workstreams, users] = await Promise.all([
     api.workstreams().catch(() => []),
-    isManager ? api.users().catch(() => []) : Promise.resolve([]),
+    seesAll ? api.users().catch(() => []) : Promise.resolve([]),
   ]);
 
   const search = el('input', {
@@ -169,14 +175,43 @@ export async function taskListView(mount, params) {
   });
 
   const refine = [statusSel, prioritySel, exceptionSel, gapSel, workstreamSel];
-  if (isManager) {
+  if (seesAll) {
     const ownerSel = select(
       [{ value: '', label: 'All owners' }, ...users.map((u) => ({ value: u.id, label: u.name }))],
       filters.ownerId,
     );
     bind(ownerSel, 'ownerId');
     refine.push(ownerSel);
+
+    const reviewerSel = select(
+      [{ value: '', label: 'All reviewers' }, ...users.map((u) => ({ value: u.id, label: u.name }))],
+      filters.reviewerId,
+    );
+    bind(reviewerSel, 'reviewerId');
+    refine.push(reviewerSel);
   }
+
+  /**
+   * The queue a reviewer actually works from.
+   *
+   * Two separate things wait on a reviewer — proposed dates and submitted work
+   * — and a list cannot show the union of two filters, so this is a pair of
+   * lenses rather than one. Both are one click from anywhere in the plan.
+   */
+  const lenses = seesAll
+    ? [
+        {
+          label: 'Work to sign off',
+          on: filters.reviewerId === session.user?.id && filters.status === 'review',
+          set: { reviewerId: session.user?.id ?? '', status: 'review', exception: '' },
+        },
+        {
+          label: 'Dates to agree',
+          on: filters.reviewerId === session.user?.id && filters.exception === 'SCHEDULE_AWAITING_REVIEW',
+          set: { reviewerId: session.user?.id ?? '', exception: 'SCHEDULE_AWAITING_REVIEW', status: '' },
+        },
+      ]
+    : [];
 
   const activeCount =
     Object.entries(filters).filter(([key, value]) => value && key !== 'sort').length + (gap ? 1 : 0);
@@ -210,6 +245,30 @@ export async function taskListView(mount, params) {
           el('span', { class: 'seg-label', text: 'Sort' }),
           sortSel,
         ),
+        lenses.length
+          ? el(
+              'div',
+              { class: 'line' },
+              el('span', { class: 'seg-label', text: 'Waiting on me' }),
+              ...lenses.map((lens) =>
+                el('button', {
+                  class: lens.on ? 'lens on' : 'lens',
+                  type: 'button',
+                  text: lens.label,
+                  onclick: () => {
+                    // Clicking the active lens clears it, so the button is a
+                    // toggle rather than a one-way trip.
+                    const next = lens.on
+                      ? { reviewerId: '', status: '', exception: '' }
+                      : lens.set;
+                    Object.assign(filters, next);
+                    gap = '';
+                    apply();
+                  },
+                }),
+              ),
+            )
+          : null,
         el('div', { class: 'line' }, el('span', { class: 'seg-label', text: 'Filter' }), ...refine),
       ),
     ),

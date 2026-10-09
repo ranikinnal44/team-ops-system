@@ -416,11 +416,44 @@ describe('views render against real AutoDock data', () => {
     }
   });
 
-  test('the filter controls sit on two lines, not one long bar', async () => {
+  test('the filter controls sit on separate lines, not one long bar', async () => {
+    // An employee gets the two general lines; somebody who sees the whole
+    // board gets a third for the lenses onto what is waiting on them.
+    await signIn('faizan@example.com');
+    const asEmployee = mount();
+    await views.taskList.taskListView(asEmployee, new URLSearchParams());
+    assert.equal(findByClass(asEmployee, 'line').length, 2);
+
     await signIn('rani@example.com');
+    const asManager = mount();
+    await views.taskList.taskListView(asManager, new URLSearchParams());
+    assert.equal(findByClass(asManager, 'line').length, 3);
+  });
+
+  test('the review lenses are offered to a reviewer and withheld from an employee', async () => {
+    await signIn('rani@example.com');
+    const asManager = mount();
+    await views.taskList.taskListView(asManager, new URLSearchParams());
+    const labels = findByClass(asManager, 'lens').map((n) => n.text());
+    assert.deepEqual(labels, ['Work to sign off', 'Dates to agree']);
+
+    await signIn('faizan@example.com');
+    const asEmployee = mount();
+    await views.taskList.taskListView(asEmployee, new URLSearchParams());
+    assert.equal(findByClass(asEmployee, 'lens').length, 0);
+  });
+
+  test('an active lens reads as pressed', async () => {
+    await signIn('rani@example.com');
+    const me = api.session.user.id;
     const node = mount();
-    await views.taskList.taskListView(node, new URLSearchParams());
-    assert.equal(findByClass(node, 'line').length, 2);
+    await views.taskList.taskListView(
+      node,
+      new URLSearchParams(`reviewerId=${me}&status=review`),
+    );
+    const on = findByClass(node, 'lens').filter((n) => n.classList().includes('on'));
+    assert.equal(on.length, 1);
+    assert.equal(on[0]?.text(), 'Work to sign off');
   });
 
   test('a status legend is present, so the dots are never a guess', async () => {
