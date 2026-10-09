@@ -1350,6 +1350,17 @@ export function recordDayOutcome(
   if (input.progress !== undefined && input.progress !== null) {
     if (!Number.isInteger(input.progress) || input.progress < 0 || input.progress > 100) {
       details.push({ path: 'progress', message: 'must be a whole number between 0 and 100' });
+    } else if (input.progress === 100) {
+      // 100% means finished, and finished means reviewed. `updateTask` already
+      // refuses this; a daily outcome must not be the way around it. The status
+      // check above means the task is in progress or blocked either way, so
+      // there is no case where 100% is legal here.
+      details.push({
+        path: 'progress',
+        message:
+          'a day of work cannot put the task at 100% — send it for review, and ' +
+          'its reviewer completes it',
+      });
     }
   }
   if (details.length > 0) throw validationError('That daily outcome cannot be recorded', details);

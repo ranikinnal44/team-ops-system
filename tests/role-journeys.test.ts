@@ -789,3 +789,46 @@ describe('invariant: nobody signs off their own work', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('invariant: 100% means reviewed', () => {
+  let cast: Cast;
+  before(async () => (cast = await assemble()));
+  after(async () => cast.server.close());
+
+  test('a daily outcome cannot push a task to 100% while it is still in progress', async () => {
+    const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
+    const day = nextMonday();
+    await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
+      token: cast.owner,
+      body: { startDate: day, dueDate: day },
+    });
+    await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
+      token: cast.reviewer,
+      body: { approve: true },
+    });
+    await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { status: 'in_progress' },
+    });
+
+    // The direct route is refused...
+    const direct = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.owner,
+      body: { progress: 100 },
+    });
+    assert.equal(direct.status, 400);
+
+    // ...so the daily log must not be a way around it.
+    const viaLog = await cast.server.request('POST', `/api/tasks/${id}/day-logs`, {
+      token: cast.owner,
+      body: { outcome: 'Finished everything.', progress: 100 },
+    });
+    const seen = await getTask(cast, cast.owner, id);
+    assert.ok(
+      !(seen.body.task.progress === 100 && seen.body.task.status === 'in_progress'),
+      `a day log left the task at 100% while In Progress (log status ${viaLog.status})`,
+    );
+  });
+});
