@@ -1,0 +1,16 @@
+# One backup run. Driven by teamops-backup.timer, not enabled on its own.
+[Unit]
+Description=Team Ops System — database snapshot
+
+[Service]
+Type=oneshot
+User=teamops
+Group=teamops
+WorkingDirectory=/opt/team-ops-system
+# --dir should point somewhere OTHER than this machine's disk: a NAS mount, a
+# second drive, anything that survives this box dying.
+ExecStart=/usr/bin/node --env-file-if-exists=.env scripts/backup.ts --keep=48
+ProtectSystem=strict
+ReadWritePaths=/opt/team-ops-system/backups /opt/team-ops-system/logs
+PrivateTmp=yes
+NoNewPrivileges=yes

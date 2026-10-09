@@ -1,0 +1,11 @@
+# Hourly snapshots, and one straight after boot in case the machine was off.
+[Unit]
+Description=Team Ops System — hourly database snapshot
+
+[Timer]
+OnCalendar=hourly
+OnBootSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

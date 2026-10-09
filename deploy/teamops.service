@@ -1,0 +1,49 @@
+# Team Ops System — runs on boot, restarts if it dies.
+#
+# Install on the office machine:
+#   sudo cp deploy/teamops.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/teamops.service     # check User, paths, node
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now teamops
+#
+# Then:
+#   systemctl status teamops          is it up
+#   journalctl -u teamops -f          live log
+#   sudo systemctl restart teamops    after a code change
+#
+# `which node` on that machine tells you what ExecStart should point at.
+# A version manager's path (~/.nvm/...) works but breaks on upgrade — prefer a
+# system install, e.g. /usr/bin/node.
+
+[Unit]
+Description=Team Ops System
+Documentation=file:///opt/team-ops-system/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=teamops
+Group=teamops
+WorkingDirectory=/opt/team-ops-system
+ExecStart=/usr/bin/node --env-file-if-exists=.env src/server.ts
+
+# Come back from a crash, but stop flapping if it cannot start at all.
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# The database is the only thing that matters; make losing it harder.
+# ProtectSystem=strict makes everything read-only except what is listed.
+ProtectSystem=strict
+ReadWritePaths=/opt/team-ops-system/data /opt/team-ops-system/backups /opt/team-ops-system/logs
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
