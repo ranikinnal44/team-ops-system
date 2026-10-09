@@ -248,6 +248,12 @@ one; sealing them would open a gap with no way to close it. Rescheduling keeps t
 still inside the new dates and raises `MISSING_DAY_OUTCOMES` for the rest rather than inventing
 text for them.
 
+**Dates live on tasks and nowhere else.** A milestone has no `start_date`, `end_date` or
+`target_date` at all — only `timeline_label`, the plan's own relative wording such as
+`"W1 - W2"`. A deliverable's `due_date` is nullable and set only once a real deadline is agreed.
+A milestone is a named outcome with work underneath it; the calendar comes from that work, once
+someone is accountable for it.
+
 **A task with no dates is a normal state, not a defect.** `start_date` and `due_date` are
 nullable and carry `SCHEDULE_NOT_SET` until the owner proposes them. Imported rows are dated
 according to what their source actually established:
@@ -256,8 +262,9 @@ according to what their source actually established:
 |---|---|
 | Build timeline (28 tasks) | Derived from `AUTODOCK_W1_START` — the plan states a schedule in relative weeks, so these arrive **agreed and locked**, with the budget read back out of the window |
 | Daily log (56 tasks) | The day the row was logged stands at **both** ends, and these arrive **unscheduled**: the log records when a task was raised, not when it is due, and a stand-in is not an agreement. Every open row carries a `MISSING_DUE_DATE` clarification asking for a real one |
-| Deliverables | The stated `by W*n*` date where the plan gives one; otherwise the end of the owning milestone. `due_label` is still set only when the plan stated it, so a derived date stays distinguishable |
-| Log-inferred milestones | First to last logged day of the rows they group |
+| Deliverables | Never dated by an import. `due_label` keeps the plan's own wording (`by W1`) where it gave one, which is a statement about the plan rather than a deadline anyone agreed |
+| Milestones | Never dated, from either source. The build timeline's week range survives verbatim in `timeline_label` |
+| Supply orders | Still dated, and deliberately: an 8-week lead time is only chaseable against a real calendar. The order-by date comes from the plan's stated week, or is worked back from the needed-by date |
 
 What the source failed to establish still becomes a clarification rather than a silent guess —
 the record now just carries a flagged stand-in instead of a null.
@@ -277,8 +284,14 @@ npm run setup        # create the schema and load the AutoDock project data
 npm start            # http://127.0.0.1:4000
 ```
 
-Open **http://127.0.0.1:4000**, pick a user, passcode `demo1234`.
+Open **http://127.0.0.1:4000** and pick a user. **Each person has their own passcode** — the
+seed prints them all when it runs, under "Sign in as". A seeded demo passcode is the email's
+local part with `123` on the end, so `demo.manager@example.com` signs in with `demomanager123`.
 Rani is the manager; Firaz, Ashutosh, Mallikarjun and Faizan are employees.
+
+A manager sets a passcode when adding someone on the **Team** screen, and can replace anybody's
+from the same row. Nothing can read one back: only a scrypt hash with a per-user salt is stored,
+so a forgotten passcode is replaced rather than recovered.
 
 ### Starting from nothing
 
@@ -288,7 +301,7 @@ of an empty picker. From there the **Plan** screen builds the hierarchy by hand:
 ```
 Plan  →  create the project
       →  add workstreams      (Mechanical Design, Procurement, …)
-      →  add milestones       inside each workstream, with dates
+      →  add milestones       inside each workstream — named outcomes, no dates
       →  add deliverables and long-lead orders
 Team  →  add the rest of the team, as managers or employees
 Tasks →  create tasks, assign owners in bulk
@@ -306,10 +319,79 @@ node, naming what is in the way, rather than cascading and taking a month of tas
 ▸ On this network:  http://192.168.29.163:4000/
 ```
 
-> **Security.** On `0.0.0.0` the only thing between the network and the whole system is
-> `AUTH_PASSCODE`. There is no per-user password, no HTTPS and no rate limiting. Use it on a
-> network you trust, change the passcode from its default, and put it behind a TLS-terminating
-> proxy before it goes anywhere wider. See Known Limitations.
+> **Security.** Before more than one machine uses this, do three things: turn on TLS, check
+> backups are running, and change `AUTH_JOIN_CODE` from its default. The first two are one
+> command each — see below. The login screen still lists who exists, which is deliberate for an
+> internal tool. See Known Limitations for what is still missing.
+
+### Running it for a team
+
+**1. Encrypt the traffic.** Without TLS every passcode and every session token crosses the
+network as readable text, and a token is the whole account for 12 hours — replayable by anyone
+who saw it.
+
+```bash
+npm run tls:selfsigned      # certificate for this machine's addresses
+# then in .env:
+#   TLS_CERT_PATH=./certs/cert.pem
+#   TLS_KEY_PATH=./certs/key.pem
+npm start                   # now serves https://
+```
+
+The script creates a small local certificate authority (`certs/ca.pem`) once, then issues the
+server's certificate from it. **Import `ca.pem` into each machine's browser once** and the
+warning stops for good — including after this machine's IP changes, because re-running the
+script reuses the same authority.
+
+```
+Chrome:  Settings → Privacy and security → Security → Manage certificates
+         → Authorities → Import → ca.pem → tick "identifying websites"
+Firefox: Settings → Privacy & Security → View Certificates → Authorities
+```
+
+Without that import you get `ERR_CERT_AUTHORITY_INVALID` and have to click through each time.
+The warning is about *identity* — whether the browser can vouch for who the server is — not
+encryption; traffic is protected either way.
+
+**Use the name, not the address.** The certificate covers `<hostname>.local`, so
+`https://rani-OMEN.local:4000/` keeps working when DHCP moves the machine to a different IP.
+An address in the URL means a new certificate every time the network changes. Re-run
+`npm run tls:selfsigned` after any such move, or pass extra names:
+`npm run tls:selfsigned teamops.local`.
+
+For a setup with no certificate management at all, run Caddy in front instead
+([deploy/Caddyfile](deploy/Caddyfile)) and set `HOST=127.0.0.1` so nothing reaches the app
+except through the proxy.
+
+**2. Keep backups.** There is one database file and losing it is permanent.
+
+```bash
+npm run backup                     # snapshot now, keeping the last 14
+npm run backup -- --keep=30 --dir=/mnt/nas/teamops
+```
+
+It uses SQLite's `VACUUM INTO`, so it is safe to run against a live server. Schedule it:
+
+```cron
+0 * * * * cd /path/to/team-ops-system && node --env-file-if-exists=.env scripts/backup.ts >> logs/backup.log 2>&1
+```
+
+A snapshot on the same disk survives a mistake, not a dead drive — point `--dir` at another
+machine. **To restore:** stop the server and copy a snapshot over `data/team-ops.db`.
+
+**3. Never put `data/team-ops.db` in Dropbox, Google Drive or on a network share,** and never
+point two server processes at it. SQLite's locking does not survive that and the result is
+corruption, not an error. One host, one process, local disk — copy *snapshots* elsewhere.
+
+**Guessing is throttled.** Five failed attempts on one email, or twenty from one address, and
+further attempts are refused for 15 minutes (`AUTH_MAX_FAILURES_PER_EMAIL`,
+`AUTH_MAX_FAILURES_PER_IP`, `AUTH_LOCKOUT_MINUTES`). A correct passcode clears the count, so a
+bad morning does not lock anyone out. Every attempt, success or failure, lands in `auth_events`
+along with passcode resets and role changes.
+
+**Credential changes end sessions.** Resetting somebody's passcode, or changing their role,
+signs them out everywhere immediately rather than leaving the old session valid for the rest of
+its 12 hours.
 
 ### Datasets
 
@@ -429,15 +511,28 @@ outcome for every day of a multi-day task, captured as the task is added. See
 [Task scheduling rules](#task-scheduling-rules) for how the three hold together and which
 limits imported records are exempt from.
 
-**Roles**
+**Roles** — three, split by what each one is answerable for: a manager plans the work, a
+reviewer confirms what people commit to, an employee does it.
+
 - *Manager*: create projects, workstreams, milestones, deliverables and tasks; assign owners;
-  set priorities and deadlines; reassign; change status; view all tasks; view overdue, blocked,
-  stale and upcoming; review team-level progress; decide deadline requests.
+  set priorities and effort budgets; reassign; change status; view all tasks; view overdue,
+  blocked, stale and upcoming; review team-level progress; decide deadline requests.
+- *Reviewer*: confirm the dates an owner proposes, sign off work submitted for review, and
+  decide deadline-change requests — **on the tasks they are named the reviewer of, and only
+  those**. The authority follows the accountability: one named person answers for each task's
+  review. They read the whole board, including the team's load, because they cannot confirm
+  what they cannot find.
 - *Employee*: see only tasks they own, support or review; today / upcoming / overdue / blocked /
   awaiting review / recently completed; update status, progress, blocker, next action, comments
-  and evidence links; request a deadline change; mark ready for review.
+  and evidence links; propose their dates; request a deadline change; mark ready for review.
+- A reviewer writes no more of a task than an employee does, and **cannot** create projects,
+  workstreams, milestones or tasks, reassign work, bulk-assign or manage the team.
 - Employees **cannot** change owner, project, milestone, priority, dates or day outcomes. The
   attempt is refused with a message pointing at the deadline-request flow.
+
+Being a reviewer on a task and holding the reviewer *role* are still separate things: any
+active user can be named a task's reviewer, which is what grants the per-task sign-off. The role
+adds board-wide visibility and the right to decide extensions on those same tasks.
 
 **Status machine** — exactly the five statuses, exactly the listed transitions, plus a
 manager-only `Completed → In Progress` reopen (documented below). Completing sets progress to
@@ -513,36 +608,48 @@ again and remains authoritative.
 
 ## Known limitations
 
-1. **Authentication is a user picker, not real auth.** A shared passcode from `.env` plus user
-   selection issues a session token. There are no per-user credentials, no password hashing and
-   no SSO. Fine for an internal Layer 1 on a trusted network; **replace before any wider
-   deployment.** The seam is clean: `src/services/auth.service.ts` is the only file to change,
-   because routes only ever see an `Actor`.
-2. **No HTTPS, rate limiting or CSRF protection.** Run it behind a reverse proxy that
-   terminates TLS. Tokens are bearer tokens in `localStorage`.
-3. **Transitions are relational, not role-based.** `Review → Completed` and `Review → In
+1. **Authentication is thin, though no longer shared or unguarded.** Each person has their own
+   passcode, stored as a scrypt hash with its own salt; wrong email and wrong passcode fail
+   identically; failures are throttled and logged; credential and role changes end sessions.
+   What is still missing: password reset by email, passcode expiry or rotation, any second
+   factor, SSO, and an idle timeout — a session lasts its full 12 hours whether or not anyone is
+   using it. The login screen also still lists who exists, deliberately, because this is an
+   internal tool. The seam is clean: `src/services/auth.service.ts` and `src/lib/passcode.ts`
+   are the only files to change, because routes only ever see an `Actor`.
+2. **Edits are checked for conflicts, not merged.** A task update may carry the
+   `lastUpdatedAt` the editor was looking at; if somebody else saved first, the write is refused
+   with a 409 naming them rather than overwriting their change. The screen sends it, so the
+   protection is on for anything edited by hand. Bulk assignment and the importers deliberately
+   omit it — they are not editing somebody's open screen. There is still no live refresh: the
+   board does not update until you reload it.
+3. **TLS is available but off by default.** Set `TLS_CERT_PATH` and `TLS_KEY_PATH` (see
+   "Running it for a team") or put Caddy in front. Until you do, traffic is readable on the
+   network. There is no CSRF surface — auth is a bearer token, not a cookie — but that token
+   lives in `localStorage`, so an XSS would hand over the account; the CSP exists to make that
+   much harder.
+4. **Transitions are relational, not role-based.** `Review → Completed` and `Review → In
    Progress` require the task's assigned reviewer, because an owner signing off their own work
    is not review. Both exits are gated: gating only the exit to Completed would let an owner
    withdraw from review and walk the task to Completed the long way round. `Completed → In
    Progress` is manager-only, because work closed in error otherwise has no route back.
-4. **Dashboard aggregation happens in memory.** Tasks are loaded and the rules evaluated in
+5. **Dashboard aggregation happens in memory.** Tasks are loaded and the rules evaluated in
    TypeScript rather than SQL. This is deliberate — one source of truth for the rules — and is
    comfortable into the low thousands of tasks. Past that, push the counts into SQL while
    keeping `domain/exceptions.ts` authoritative for single-task decisions.
-5. **Nothing has a priority and the 28 planned tasks have no owner** — because neither source
+6. **Nothing has a priority and the 28 planned tasks have no owner** — because neither source
    document states them. The 56 historical tasks state no deadline either; since dates are
    mandatory they carry the log's own date as a flagged stand-in, so the deadline engine is live
    for them but measuring against a date nobody committed to. Every affected task is marked in
    **Tasks** and reachable via the *Needs clarification* filter. See [AUTODOCK.md](AUTODOCK.md) §C.
-6. **"Today" is the server's local date.** There is no per-user timezone; a distributed team
+7. **"Today" is the server's local date.** There is no per-user timezone; a distributed team
    would need one.
-7. **Working days ignore public holidays.** Only Saturday and Sunday are skipped.
-8. **SQLite single-writer.** Right for this scale; a busy multi-writer deployment would want
+8. **Working days ignore public holidays.** Only Saturday and Sunday are skipped.
+9. **SQLite single-writer.** Right for this scale; a busy multi-writer deployment would want
    PostgreSQL. Only `src/db/` and the repositories would change.
-9. **No pagination.** Task lists return everything matching the filter.
-10. **No soft delete or archiving of tasks.** Projects have an `archived` flag that the UI does
+10. **No pagination.** Task lists return everything matching the filter.
+11. **No soft delete or archiving of tasks.** Projects have an `archived` flag that the UI does
    not yet expose.
-11. **Frontend coverage is smoke-level.** `tests/ui-render.test.ts` executes every view against
+12. **Frontend coverage is smoke-level.** `tests/ui-render.test.ts` executes every view against
     a live API under a minimal DOM stub, which catches render-time errors and null handling.
     A few handlers are driven directly — the add-member form, and the date changes that build
     the per-day outcome inputs — but most interaction is not: clicks, routing and the bulk of

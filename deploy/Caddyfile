@@ -1,0 +1,31 @@
+# TLS without the browser warning, for when this stops being a demo.
+#
+# Caddy terminates HTTPS and forwards to the app on localhost. The app itself
+# then binds 127.0.0.1 only, so nothing reaches it except through here.
+#
+#   sudo apt install caddy      (or: https://caddyserver.com/docs/install)
+#   caddy run --config deploy/Caddyfile
+#
+# With `tls internal` Caddy runs its own small certificate authority. Import
+# the root it prints into each machine's trust store once, and every browser
+# on the team stops warning.
+#
+# Then in .env:
+#   HOST=127.0.0.1
+#   TLS_CERT_PATH=        (leave empty — Caddy holds the certificate)
+#   TLS_KEY_PATH=
+
+teamops.local, {$SERVER_IP:192.168.1.10} {
+	tls internal
+
+	reverse_proxy 127.0.0.1:4000 {
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	encode gzip
+
+	log {
+		output file ./logs/access.log
+		format console
+	}
+}
