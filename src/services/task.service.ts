@@ -1100,10 +1100,18 @@ export function requestDeadlineChange(
   // The budget cap is a policy about the work, not about who is asking, so an
   // extension cannot be used to route around it.
   if (task.startDate !== null) {
-    const requestedEffort = workingDaysInclusive(task.startDate, input.requestedDueDate);
-    if (requestedEffort < 1) {
+    if (input.requestedDueDate < task.startDate) {
       throw validationError('The requested date is before the task starts', [
         { path: 'requestedDueDate', message: 'must be on or after the start date' },
+      ]);
+    }
+    const requestedEffort = workingDaysInclusive(task.startDate, input.requestedDueDate);
+    if (requestedEffort < 1) {
+      // Reachable without the date being wrong at all: a window that falls
+      // entirely on a weekend contains no working days. Saying "before the
+      // start" there sends people looking for a problem that is not theirs.
+      throw validationError('That window contains no working days', [
+        { path: 'requestedDueDate', message: 'pick a date that leaves at least one working day' },
       ]);
     }
     if (requestedEffort > maxEffortDays()) {
