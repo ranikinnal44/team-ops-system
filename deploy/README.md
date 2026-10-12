@@ -1,5 +1,12 @@
 # Moving Team Ops to the office machine
 
+> **This guide assumes a Linux host** — it uses systemd, `useradd` and
+> `certutil`. The app itself runs anywhere Node does; only the service,
+> scheduling and certificate steps are Linux-specific.
+>
+> Setting up the people who will *use* it, on Windows, macOS or Linux, is a
+> separate and much shorter page: **[FOR-THE-TEAM.md](FOR-THE-TEAM.md)**.
+
 The tool is one server and one database. Everybody else uses a browser — there
 is nothing to install on their machines, and nothing to copy around. Five
 copies of the app would mean five separate databases that never see each

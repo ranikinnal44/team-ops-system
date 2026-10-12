@@ -288,7 +288,8 @@ npm run setup        # create the schema and load the AutoDock project data
 npm start            # http://127.0.0.1:4000
 ```
 
-Open **http://127.0.0.1:4000** and pick a user. **Each person has their own passcode** — the
+Open **http://127.0.0.1:4000** and sign in with an email address and passcode. **Each person
+has their own passcode** — the
 seed prints them all when it runs, under "Sign in as". A seeded demo passcode is the email's
 local part with `123` on the end, so `demo.manager@example.com` signs in with `demomanager123`.
 Rani is the Task Assigner; Firaz, Ashutosh, Mallikarjun and Faizan are members.
@@ -325,10 +326,14 @@ node, naming what is in the way, rather than cascading and taking a month of tas
 
 > **Security.** Before more than one machine uses this, do three things: turn on TLS, check
 > backups are running, and change `AUTH_JOIN_CODE` from its default. The first two are one
-> command each — see below. The login screen still lists who exists, which is deliberate for an
-> internal tool. See Known Limitations for what is still missing.
+> command each — see below. See Known Limitations for what is still missing.
 
 ### Running it for a team
+
+Two companion documents:
+[**deploy/README.md**](deploy/README.md) moves the server onto an always-on
+Linux machine; [**deploy/FOR-THE-TEAM.md**](deploy/FOR-THE-TEAM.md) is the page
+to send everyone else, covering Windows, macOS and Linux.
 
 **1. Encrypt the traffic.** Without TLS every passcode and every session token crosses the
 network as readable text, and a token is the whole account for 12 hours — replayable by anyone
@@ -617,8 +622,7 @@ again and remains authoritative.
    identically; failures are throttled and logged; credential and role changes end sessions.
    What is still missing: password reset by email, passcode expiry or rotation, any second
    factor, SSO, and an idle timeout — a session lasts its full 12 hours whether or not anyone is
-   using it. The login screen also still lists who exists, deliberately, because this is an
-   internal tool. The seam is clean: `src/services/auth.service.ts` and `src/lib/passcode.ts`
+   using it. The seam is clean: `src/services/auth.service.ts` and `src/lib/passcode.ts`
    are the only files to change, because routes only ever see an `Actor`.
 2. **Edits are checked for conflicts, not merged.** A task update may carry the
    `lastUpdatedAt` the editor was looking at; if somebody else saved first, the write is refused
