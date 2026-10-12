@@ -159,9 +159,8 @@ describe('over HTTP', () => {
   });
 
   test('no endpoint hands back a passcode or its hash', async () => {
-    const directory = await server.request('GET', '/api/auth/users');
     const roster = await server.request('GET', '/api/team', { token: managerToken });
-    for (const body of [directory.body, roster.body]) {
+    for (const body of [roster.body]) {
       const serialised = JSON.stringify(body);
       assert.ok(!serialised.includes('passcode'), 'a credential must not travel with a user');
       assert.ok(!serialised.includes('scrypt'), 'nor its hash');

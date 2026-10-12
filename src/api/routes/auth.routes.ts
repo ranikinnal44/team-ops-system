@@ -58,20 +58,6 @@ export const authRoutes: Route[] = [
     },
   },
   {
-    // Powers the user-selection login screen.
-    method: 'GET',
-    path: '/api/auth/users',
-    auth: false,
-    handler: ({ db }) =>
-      auth.listSelectableUsers(db).map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        role: u.role,
-        title: u.title,
-      })),
-  },
-  {
     method: 'POST',
     path: '/api/auth/login',
     auth: false,

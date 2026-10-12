@@ -35,11 +35,12 @@ describe('authentication', () => {
     });
   });
 
-  test('the login screen can list selectable users without a token', async () => {
-    const { status, body } = await server.request('GET', '/api/auth/users');
-    assert.equal(status, 200);
-    assert.equal(body.length, 4);
-    assert.ok(body.every((u: Record<string, unknown>) => !('passcode' in u)));
+  test('nothing pre-authentication hands out who works here', async () => {
+    // The login screen asks for an address rather than listing the team, so
+    // there is no directory to serve and reaching the port tells you nothing
+    // about the people behind it.
+    const { status } = await server.request('GET', '/api/auth/users');
+    assert.equal(status, 404);
   });
 
   test('a wrong passcode is rejected', async () => {

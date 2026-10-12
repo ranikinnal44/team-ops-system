@@ -2,98 +2,148 @@
 import { api, session } from '../api.js';
 import { el, card, field, errorBox, initials, roleLabel, toast } from '../ui.js';
 
+/**
+ * Who the last sign-in on THIS browser was.
+ *
+ * Kept so a returning person gets one button instead of retyping their
+ * address. It is a convenience, not a credential — it survives signing out,
+ * and holding it grants nothing without the passcode.
+ */
+const LAST_SIGN_IN = 'teamops.lastSignIn';
+
+const rememberSignIn = (user) => {
+  try {
+    localStorage.setItem(LAST_SIGN_IN, JSON.stringify({ email: user.email, name: user.name }));
+  } catch {
+    /* private browsing — they type their address next time */
+  }
+};
+
+const lastSignIn = () => {
+  try {
+    const raw = localStorage.getItem(LAST_SIGN_IN);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const forgetSignIn = () => {
+  try {
+    localStorage.removeItem(LAST_SIGN_IN);
+  } catch {
+    /* nothing to forget */
+  }
+};
+
 export async function loginView(mount) {
   const state = await api.authState().catch(() => ({ needsBootstrap: false }));
 
   // A system with nobody in it cannot be signed into, so the first screen it
-  // shows is how to create the first Task Assigner rather than an empty picker.
+  // shows is how to create the first Task Assigner rather than an empty form.
   if (state.needsBootstrap) {
     return bootstrapView(mount);
   }
 
-  const users = await api.selectableUsers();
-  let selected = users.find((u) => u.role === 'manager') ?? users[0];
+  // Returning on this browser: show the one name rather than asking for it
+  // again. Anyone else clicks "Sign in as someone else".
+  let known = lastSignIn();
 
-  // No prefill: each person has their own passcode now, so there is no single
-  // value that would be right.
-  const passcode = el('input', { type: 'password', autocomplete: 'current-password', required: true });
-  const errors = el('div');
-  const submit = el('button', { class: 'primary', type: 'submit', text: 'Sign in' });
+  const render = () => {
+    const email = el('input', {
+      type: 'email',
+      autocomplete: 'username',
+      required: true,
+      placeholder: 'you@company.com',
+      value: known?.email ?? '',
+    });
+    const passcode = el('input', {
+      type: 'password',
+      autocomplete: 'current-password',
+      required: true,
+    });
+    const errors = el('div');
+    const submit = el('button', { class: 'primary', type: 'submit', text: 'Sign in' });
 
-  const picker = el('div', { class: 'user-pick' });
-  const renderPicker = () => {
-    picker.replaceChildren(
-      ...users.map((user) =>
-        el(
-          'button',
-          {
-            type: 'button',
-            class: user.id === selected?.id ? 'selected' : '',
-            onclick: () => {
-              selected = user;
-              renderPicker();
-            },
-          },
-          el('span', { class: 'avatar', text: initials(user.name) }),
+    const identity = known
+      ? el(
+          'div',
+          { class: 'known-user' },
+          el('span', { class: 'avatar', text: initials(known.name) }),
           el(
             'span',
             {},
-            el('div', { class: 'nm', text: user.name }),
-            el('div', { class: 'rl', text: `${roleLabel(user.role)} · ${user.title ?? ''}` }),
+            el('div', { style: 'font-weight:600;color:var(--text)', text: known.name }),
+            el('div', { class: 'small muted', text: known.email }),
           ),
+          el('span', { class: 'spacer' }),
+          el('button', {
+            class: 'subtle',
+            type: 'button',
+            text: 'Not you?',
+            onclick: () => {
+              forgetSignIn();
+              known = null;
+              render();
+            },
+          }),
+        )
+      : field('Email', email, 'The address your Task Assigner registered for you.');
+
+    const form = el(
+      'form',
+      {
+        onsubmit: async (event) => {
+          event.preventDefault();
+          errors.replaceChildren();
+          submit.disabled = true;
+          try {
+            const address = known?.email ?? email.value.trim();
+            const result = await api.login(address, passcode.value);
+            rememberSignIn(result.user);
+            session.save(result.token, result.user);
+            toast(`Signed in as ${result.user.name}`);
+            location.hash = result.user.role === 'employee' ? '#/my-work' : '#/manager';
+          } catch (error) {
+            errors.replaceChildren(errorBox(error));
+            passcode.value = '';
+          } finally {
+            submit.disabled = false;
+          }
+        },
+      },
+      errors,
+      identity,
+      field('Passcode', passcode, 'Set for you by your Task Assigner. They can replace it, not read it.'),
+      el('div', { class: 'row' }, submit),
+    );
+
+    mount.replaceChildren(
+      el(
+        'div',
+        { class: 'login-wrap' },
+        el(
+          'div',
+          { class: 'login' },
+          el('h1', { text: 'Team Ops' }),
+          el('div', {
+            class: 'sub',
+            text: known ? 'Welcome back' : 'Team task management and accountability',
+          }),
+          card(null, form),
+          el('div', {
+            class: 'notice',
+            text: 'No account? Ask a Task Assigner to add you — there is no self sign-up.',
+          }),
         ),
       ),
     );
+    (known ? passcode : email).focus?.();
   };
-  renderPicker();
 
-  const form = el(
-    'form',
-    {
-      onsubmit: async (event) => {
-        event.preventDefault();
-        errors.replaceChildren();
-        submit.disabled = true;
-        try {
-          const result = await api.login(selected.email, passcode.value);
-          session.save(result.token, result.user);
-          toast(`Signed in as ${result.user.name}`);
-          location.hash = result.user.role === 'employee' ? '#/my-work' : '#/manager';
-        } catch (error) {
-          errors.replaceChildren(errorBox(error));
-        } finally {
-          submit.disabled = false;
-        }
-      },
-    },
-    errors,
-    el('label', { text: 'Select a user' }),
-    picker,
-    field('Passcode', passcode, 'Shared demo passcode, set by AUTH_PASSCODE in .env'),
-    el('div', { class: 'row' }, submit),
-  );
-
-  mount.replaceChildren(
-    el(
-      'div',
-      { class: 'login-wrap' },
-      el(
-        'div',
-        { class: 'login' },
-        el('h1', { text: 'Team Ops' }),
-        el('div', { class: 'sub', text: 'Team task management and accountability — Layer 1' }),
-        card(null, form),
-        el('div', {
-          class: 'notice',
-          text:
-            'DEMO DATA is loaded. Sign in as the Task Assigner to see the team-wide exception view, or as a Member to see a personal work queue.',
-        }),
-      ),
-    ),
-  );
+  render();
 }
 
-/** First run: create the Task Assigner who will set everything else up. */
 async function bootstrapView(mount) {
   const name = el('input', { type: 'text', placeholder: 'Your name', required: true });
   const email = el('input', { type: 'email', placeholder: 'you@example.com', required: true });

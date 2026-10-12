@@ -93,7 +93,6 @@ const qs = (params) => {
 
 export const api = {
   health: () => request('GET', '/api/health'),
-  selectableUsers: () => request('GET', '/api/auth/users'),
   authState: () => request('GET', '/api/auth/state'),
   bootstrap: (payload) => request('POST', '/api/auth/bootstrap', payload),
   login: (email, passcode) => request('POST', '/api/auth/login', { email, passcode }),

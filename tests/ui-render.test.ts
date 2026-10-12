@@ -213,13 +213,17 @@ describe('value formatting', () => {
 // --- whole views against the live API -------------------------------------
 
 describe('views render against real AutoDock data', () => {
-  test('login view lists the real team', async () => {
+  test('login view asks who you are rather than naming the team', async () => {
     const node = mount();
     await views.login.loginView(node);
     const text = node.text();
+    // A staff list on an unauthenticated page is a directory for anyone who
+    // reaches the port.
     for (const name of ['Rani', 'Firaz', 'Ashutosh', 'Mallikarjun', 'Faizan']) {
-      assert.match(text, new RegExp(name));
+      assert.doesNotMatch(text, new RegExp(name), `${name} must not be listed before sign-in`);
     }
+    assert.match(text, /Email/);
+    assert.match(text, /Passcode/);
   });
 
   test('manager dashboard renders, including workstreams and clarifications', async () => {

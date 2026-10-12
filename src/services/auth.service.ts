@@ -2,9 +2,9 @@
  * Authentication and session handling.
  *
  * Each person has their own passcode, stored as a scrypt hash on their user
- * row. The login screen still lists who exists — this is a small internal
- * tool, not a public site — but knowing a name no longer gets you in, and one
- * leaked code no longer signs in as everybody.
+ * row. The login screen asks for an address rather than listing the team, so
+ * reaching the port tells you nothing about who works here, and one leaked
+ * code no longer signs in as everybody.
  *
  * `config.joinCode` is a different thing: it authorises creating the FIRST
  * Task Assigner on an empty system, where there is nobody to grant anything yet.

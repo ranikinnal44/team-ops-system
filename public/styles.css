@@ -508,6 +508,18 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login { width: 100%; max-width: 440px; }
 .login h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.015em; }
 .login .sub { color: var(--text-dim); font-size: 13.5px; margin-bottom: 20px; }
+/* The remembered signed-in person: one row instead of a list of the team. */
+.known-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+
 .user-pick { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
 .user-pick button {
   display: flex; align-items: center; gap: 11px;
