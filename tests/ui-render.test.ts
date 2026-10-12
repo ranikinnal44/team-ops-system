@@ -961,6 +961,25 @@ describe('views render against real AutoDock data', () => {
     assert.match(text, /open/, 'a manager sees how much open work each person holds');
   });
 
+  test('the dashboard offers New task to a manager and not to a reviewer', async () => {
+    await signIn('rani@example.com');
+    const asManager = mount();
+    await views.manager.managerView(asManager);
+    assert.match(asManager.text(), /\+ New task/);
+
+    // The role is what gates the button, so the role is what the test varies.
+    // The token stays the manager's: the board still loads, and what is being
+    // checked is the gate rather than the fetch behind it.
+    const session = api.session;
+    session.save(session.token, { ...session.user, role: 'reviewer' });
+    const asReviewer = mount();
+    await views.manager.managerView(asReviewer);
+    assert.ok(
+      !asReviewer.text().includes('+ New task'),
+      'a reviewer cannot create tasks, so the button would only bounce them',
+    );
+  });
+
   test('an employee is told the roster is closed, not shown a stripped-down one', async () => {
     await signIn('faizan@example.com');
     const node = mount();

@@ -6,6 +6,8 @@ import {
 } from '../ui.js';
 
 export async function managerView(mount) {
+  // A reviewer reads this board too, so nothing on it may assume a manager.
+  const isManager = session.user?.role === 'manager';
   const board = await api.managerDashboard();
   const s = board.summary;
 
@@ -322,7 +324,6 @@ export async function managerView(mount) {
 
   // The board-wide card keeps the rest: anything already in the personal queue
   // above would otherwise be shown, and answerable, twice.
-  const isManager = session.user?.role === 'manager';
   const otherRequests = board.pendingDeadlineRequests.filter((r) => !queueIds.has(r.id));
   const requestsBody = otherRequests.length
     ? el('div', {}, otherRequests.map((request) => requestCard(request, isManager)))
@@ -332,7 +333,9 @@ export async function managerView(mount) {
     pageHead(
       'Task Assigner dashboard',
       `What is happening, what is late, what is blocked — as of ${formatDate(board.generatedFor)}`,
-      el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }),
+      // Creating work is a manager's. Offered to a reviewer it was a button
+      // that bounced them to their own queue.
+      isManager ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }) : null,
     ),
     summary,
     el('div', { style: 'height:16px' }),
