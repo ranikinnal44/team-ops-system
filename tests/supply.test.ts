@@ -8,6 +8,13 @@ import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Database } from '../src/db/connection.ts';
 import { autoDockDb, actorByEmail } from './helpers.ts';
+import { createWeekResolver } from '../src/lib/weeks.ts';
+import { config } from '../src/config/index.ts';
+
+// The same resolver the import uses. Hard-coding dates here would tie the
+// suite to the week it was written in — `AUTODOCK_W1_START` defaults to today
+// when .env is not loaded, which `npm test` does not do.
+const weeks = createWeekResolver(config.weekAnchor);
 import * as supplyRepo from '../src/repositories/supply.repo.ts';
 import { supplyRegister, updateSupplyItem } from '../src/services/supply.service.ts';
 import {
@@ -134,8 +141,8 @@ describe('the register built from the build timeline', () => {
     const vfd = register.orders.find((o) => o.label === 'VFD');
     const pneumatic = register.orders.find((o) => o.label === 'Pneumatic system');
     assert.ok(vfd && pneumatic);
-    assert.equal(vfd.orderByDate, '2026-10-09', 'stated as "VFD order release by W1 end"');
-    assert.equal(pneumatic.orderByDate, '2026-10-16', 'stated as "by W2"');
+    assert.equal(vfd.orderByDate, weeks.endOf(1), 'stated as "VFD order release by W1 end"');
+    assert.equal(pneumatic.orderByDate, weeks.endOf(2), 'stated as "by W2"');
     assert.ok(!vfd.orderByDerived && !pneumatic.orderByDerived);
   });
 
@@ -152,7 +159,7 @@ describe('the register built from the build timeline', () => {
     const pneumatic = register.orders.find((o) => o.label === 'Pneumatic system');
     assert.ok(pneumatic);
     assert.equal(pneumatic.slackDays, 0, 'ordered on time it arrives the day it is needed');
-    assert.equal(pneumatic.neededByDate, '2026-12-11');
+    assert.equal(pneumatic.neededByDate, weeks.endOf(10), 'the end of the milestone that consumes it');
     assert.ok(pneumatic.critical);
   });
 
