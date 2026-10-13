@@ -135,9 +135,6 @@ export const needsSchedule = (task: EvaluableTask): boolean =>
  * This one blocks work outright, so it is the flag that says somebody is
  * sitting idle waiting on a review rather than merely running late.
  */
-export const awaitingScheduleReview = (task: EvaluableTask): boolean =>
-  isOpen(task) && task.scheduleState === ScheduleState.Proposed;
-
 /** Status == Blocked */
 export const isBlocked = (task: EvaluableTask): boolean => task.status === TaskStatus.Blocked;
 
@@ -174,7 +171,6 @@ export function evaluateTask(
   if (hasNoRecentUpdate(task, today, thresholds)) flags.push(ExceptionFlag.NoRecentUpdate);
   if (needsDailyUpdate(task, today, thresholds)) flags.push(ExceptionFlag.MissingDailyUpdate);
   if (needsSchedule(task)) flags.push(ExceptionFlag.ScheduleNotSet);
-  if (awaitingScheduleReview(task)) flags.push(ExceptionFlag.ScheduleAwaitingReview);
   return flags;
 }
 
@@ -210,7 +206,6 @@ export function attentionScore(
   if (flags.includes(ExceptionFlag.NoRecentUpdate)) score += 25;
   if (flags.includes(ExceptionFlag.MissingDailyUpdate)) score += 20;
   // Nobody can work on these at all, so they outrank a merely stale update.
-  if (flags.includes(ExceptionFlag.ScheduleAwaitingReview)) score += 45;
   if (flags.includes(ExceptionFlag.ScheduleNotSet)) score += 30;
   return score;
 }

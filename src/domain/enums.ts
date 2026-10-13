@@ -88,7 +88,6 @@ export const ExceptionFlag = {
   /** Assigned, budgeted, but the owner has not proposed dates yet. */
   ScheduleNotSet: 'SCHEDULE_NOT_SET',
   /** Dates proposed; the reviewer has not decided, so work cannot start. */
-  ScheduleAwaitingReview: 'SCHEDULE_AWAITING_REVIEW',
 } as const;
 export type ExceptionFlag = (typeof ExceptionFlag)[keyof typeof ExceptionFlag];
 export const EXCEPTION_FLAGS = Object.values(ExceptionFlag) as readonly ExceptionFlag[];
@@ -99,8 +98,7 @@ export const EXCEPTION_LABEL: Record<ExceptionFlag, string> = {
   NO_RECENT_UPDATE: 'No recent update',
   BLOCKED: 'Blocked',
   MISSING_DAILY_UPDATE: 'No daily outcome logged',
-  SCHEDULE_NOT_SET: 'Needs dates from its owner',
-  SCHEDULE_AWAITING_REVIEW: 'Dates awaiting review',
+  SCHEDULE_NOT_SET: 'Needs a start date from its owner',
 };
 
 /** Kinds of entries in the task activity log. */

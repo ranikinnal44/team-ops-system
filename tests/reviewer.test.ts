@@ -15,7 +15,7 @@ import * as team from '../src/services/team.service.ts';
 import { TaskStatus, Role } from '../src/domain/enums.ts';
 import type { Actor } from '../src/domain/types.ts';
 import { ErrorCode } from '../src/lib/errors.ts';
-import { todayDate, addDays } from '../src/lib/dates.ts';
+import { todayDate, workingDayDeadline } from '../src/lib/dates.ts';
 
 const today = (): string => todayDate();
 
@@ -35,7 +35,7 @@ const newTask = (db: Database, over: Record<string, unknown> = {}): ReturnType<t
     ownerId: employee1(db).id,
     reviewerId: employee2(db).id,
     startDate: today(),
-    dueDate: today(),
+    scheduledDays: 1,
     ...over,
   } as Parameters<typeof tasks.createTask>[2]);
 
@@ -192,13 +192,18 @@ describe('the reviewer role', () => {
     const task = newTask(db, { reviewerId: reviewer.id });
     assert.ok(task.dueDate);
     const request = tasks.requestDeadlineChange(db, employee1(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 2),
+      requestedEffortDays: Math.max(1, (task.effortDays ?? 2) - 1),
       reason: 'The rig is double-booked.',
     });
 
     const decided = tasks.decideDeadlineChange(db, reviewer, request.id, { approve: true });
     assert.equal(decided.status, 'approved');
-    assert.equal(tasks.getTask(db, manager(db), task.id).dueDate, addDays(task.dueDate, 2));
+    assert.equal(decided.requestedEffortDays, request.requestedEffortDays);
+    // The deadline follows the approved budget, in working days.
+    assert.equal(
+      tasks.getTask(db, manager(db), task.id).dueDate,
+      workingDayDeadline(task.startDate as string, request.requestedEffortDays),
+    );
   });
 
   test('is refused on a task somebody else reviews', () => {
@@ -206,7 +211,7 @@ describe('the reviewer role', () => {
     const task = newTask(db);
     assert.ok(task.dueDate);
     const request = tasks.requestDeadlineChange(db, employee1(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 2),
+      requestedEffortDays: Math.max(1, (task.effortDays ?? 2) - 1),
       reason: 'Same rig.',
     });
 

@@ -38,7 +38,7 @@ function liveTask(db: Database): string {
     supportingMemberIds: [employee2(db).id],
     priority: 'P1',
     startDate: today(),
-    dueDate: today(),
+    scheduledDays: 1,
   });
   tasks.updateTask(db, employee1(db), created.id, { status: TaskStatus.InProgress });
   return created.id;
@@ -96,7 +96,7 @@ describe('when a daily outcome may be logged', () => {
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       startDate: today(),
-      dueDate: today(),
+      scheduledDays: 1,
     });
     assert.throws(
       () => tasks.recordDayOutcome(db, employee1(db), created.id, { outcome: 'Nothing yet.' }),

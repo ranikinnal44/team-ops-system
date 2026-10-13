@@ -4,6 +4,7 @@ import {
   el, card, field, select, statusBadge, priorityTag, flagTag, progressBar, unassignedTag,
   formatDate, formatDateTime, relativeDays, pageHead, errorBox, toast, addDays, STATUS_LABEL,
   clarificationLabel, clarificationField, factId, daysInRange, todayIso,
+  nextWorkingIso, workingDaysFrom,
 } from '../ui.js';
 
 const HISTORY_TEXT = {
@@ -594,35 +595,54 @@ export async function taskDetailView(mount, params, taskId) {
 
   const storedDays = daysInRange(task.startDate, task.dueDate).length;
   const overLimit = storedDays > maxEffortDays;
-  const scheduleStart = el('input', { type: 'date', value: task.startDate ?? todayIso() });
-  const scheduleEnd = el('input', {
+  const budget = task.effortDays ?? maxEffortDays;
+
+  // The owner says when they start and, if they need fewer, how many of their
+  // budgeted days they will take. The deadline is worked out from that in
+  // working days — nobody types it, so nobody can quietly take longer.
+  const scheduleStart = el('input', {
     type: 'date',
-    value: task.dueDate ?? task.startDate ?? todayIso(),
+    value: task.startDate ?? nextWorkingIso(todayIso()),
   });
+  const scheduleDaysInput = el('input', {
+    type: 'number',
+    min: '1',
+    max: String(budget),
+    value: String(task.effortDays ?? 1),
+  });
+  const derivedDue = el('div', { class: 'derived-due' });
   const outcomeByDate = new Map((task.dayPlans ?? []).map((p) => [p.date, p.outcome]));
   const scheduleDays = el('div', { class: 'day-plan' });
   const scheduleNote = el('div', { class: 'hint' });
 
-  const coveredDays = () =>
-    daysInRange(scheduleStart.value, scheduleEnd.value).slice(0, maxEffortDays);
+  const takenDays = () => {
+    const asked = Number(scheduleDaysInput.value) || 1;
+    return Math.max(1, Math.min(asked, budget));
+  };
+  const coveredDays = () => workingDaysFrom(scheduleStart.value, takenDays());
 
   function renderScheduleDays() {
-    scheduleEnd.min = scheduleStart.value || '';
-    scheduleEnd.max = scheduleStart.value ? addDays(scheduleStart.value, maxEffortDays - 1) : '';
-    if (scheduleEnd.value && scheduleEnd.min && scheduleEnd.value < scheduleEnd.min) {
-      scheduleEnd.value = scheduleEnd.min;
-    }
-    if (scheduleEnd.value && scheduleEnd.max && scheduleEnd.value > scheduleEnd.max) {
-      scheduleEnd.value = scheduleEnd.max;
-    }
+    // A weekend start has no working day to begin on, so move it forward
+    // rather than letting the server refuse something the form allowed.
+    if (scheduleStart.value) scheduleStart.value = nextWorkingIso(scheduleStart.value);
 
     const days = coveredDays();
+    const due = days[days.length - 1];
+    derivedDue.replaceChildren(
+      el('span', { class: 'derived-due-label', text: 'Deadline' }),
+      el('span', { class: 'derived-due-date', text: due ? formatDate(due) : '—' }),
+      el('span', {
+        class: 'small muted',
+        text: `${days.length} working day${days.length === 1 ? '' : 's'}, weekends excluded`,
+      }),
+    );
+
     if (days.length <= 1) {
       scheduleDays.replaceChildren();
       scheduleNote.textContent = 'A one-day task is a single outcome — the task itself.';
       return;
     }
-    scheduleNote.textContent = `${days.length} days, each needing its own outcome.`;
+    scheduleNote.textContent = `${days.length} working days, each needing its own outcome.`;
     scheduleDays.replaceChildren(
       ...days.map((day, index) =>
         el(
@@ -640,7 +660,7 @@ export async function taskDetailView(mount, params, taskId) {
     );
   }
   scheduleStart.addEventListener('change', renderScheduleDays);
-  scheduleEnd.addEventListener('change', renderScheduleDays);
+  scheduleDaysInput.addEventListener('input', renderScheduleDays);
   renderScheduleDays();
 
   const scheduleErrors = el('div');
@@ -654,21 +674,13 @@ export async function taskDetailView(mount, params, taskId) {
         try {
           await api.proposeSchedule(task.id, {
             startDate: scheduleStart.value,
-            dueDate: scheduleEnd.value,
+            effortDays: takenDays(),
             dayPlans:
               days.length > 1
                 ? days.map((day) => ({ date: day, outcome: (outcomeByDate.get(day) ?? '').trim() }))
                 : [],
           });
-          // A Task Assigner or the reviewer is the person who would approve this
-          // anyway, so their own submission is agreed in the same action
-          // rather than parked in a queue addressed to themselves.
-          if (isManager || isReviewer) {
-            await api.decideSchedule(task.id, { approve: true });
-            toast('Dates agreed');
-          } else {
-            toast('Dates sent for review');
-          }
+          toast('Schedule set');
           taskDetailView(mount, params, taskId);
         } catch (error) {
           scheduleErrors.replaceChildren(errorBox(error));
@@ -684,25 +696,47 @@ export async function taskDetailView(mount, params, taskId) {
             `shorten it to at most ${maxEffortDays} days; split off the rest as its own task.`)
       : null,
     el('div', { class: 'grid-2' },
-      field('Start date', scheduleStart),
-      field('End date', scheduleEnd, `At most ${maxEffortDays} days.`)),
+      field('Start date', scheduleStart, 'A working day — the deadline is counted in them.'),
+      field('Working days', scheduleDaysInput, `Budgeted ${budget}. Ask for more if you need it.`)),
+    derivedDue,
     el('div', { class: 'field' },
       el('label', { text: 'What each day delivers' }), scheduleDays, scheduleNote),
     el('div', { class: 'row' },
       el('button', { class: 'primary', type: 'submit', text: noDeadlineYet ? 'Set schedule' : 'Update schedule' })),
   );
 
-  // --- deadline change request --------------------------------------------
-  const deadlineInput = el('input', {
-    type: 'date',
-    value: task.dueDate ? addDays(task.dueDate, 1) : addDays(todayIso(), 1),
-    ...(task.startDate
-      ? { min: task.startDate, max: addDays(task.startDate, maxEffortDays - 1) }
-      : {}),
-  });
-  const reasonInput = el('input', { type: 'text', placeholder: 'Why is the date no longer reachable?' });
+  // The owner commits to when they start; a Task Assigner can do it for them
+  // when somebody is away.
+  const canSetSchedule = isOwner || isManager;
 
-  const deadlineBody = isManager
+  // --- effort change request ----------------------------------------------
+  // The deadline is derived, so what gets asked for is DAYS. Approving one
+  // moves the budget, and the deadline follows.
+  const budgetInput = el('input', {
+    type: 'number',
+    min: '1',
+    max: String(maxEffortDays),
+    value: String(Math.min(maxEffortDays, (task.effortDays ?? 1) + 1)),
+  });
+  const reasonInput = el('input', { type: 'text', placeholder: 'Why does it need longer?' });
+  const requestPreview = el('div', { class: 'hint' });
+
+  const renderRequestPreview = () => {
+    const asked = Math.max(1, Math.min(Number(budgetInput.value) || 1, maxEffortDays));
+    const days = task.startDate ? workingDaysFrom(task.startDate, asked) : [];
+    const due = days[days.length - 1];
+    requestPreview.textContent = due
+      ? `Approved, the deadline would move to ${formatDate(due)} — ${asked} working days from ${formatDate(task.startDate)}.`
+      : `A task runs for at most ${maxEffortDays} working days.`;
+  };
+  budgetInput.addEventListener('input', renderRequestPreview);
+  renderRequestPreview();
+
+  const describeRequest = (request) =>
+    `Requested by ${request.requestedByName}: ` +
+    `${request.currentEffortDays} → ${request.requestedEffortDays} working days`;
+
+  const deadlineBody = isManager || isReviewer
     ? el(
         'div',
         {},
@@ -710,32 +744,31 @@ export async function taskDetailView(mount, params, taskId) {
           ? el(
               'div',
               { class: 'pending-request' },
-              el('div', { class: 'small muted', text: `Requested by ${pendingRequest.requestedByName}: ${formatDate(pendingRequest.currentDueDate)} → ${formatDate(pendingRequest.requestedDueDate)}` }),
+              el('div', { class: 'small muted', text: describeRequest(pendingRequest) }),
               el('div', { class: 'small', style: 'margin:6px 0', text: pendingRequest.reason }),
               el('div', { class: 'row' },
                 el('button', { class: 'primary', text: 'Approve', onclick: async () => {
-                  try { await api.decideDeadline(pendingRequest.id, true, null); toast('Deadline updated'); taskDetailView(mount, params, taskId); }
+                  try { await api.decideDeadline(pendingRequest.id, true, null); toast('Budget updated'); taskDetailView(mount, params, taskId); }
                   catch (error) { toast(error.message, true); }
                 } }),
                 el('button', { class: 'danger', text: 'Reject', onclick: async () => {
                   try { await api.decideDeadline(pendingRequest.id, false, null); toast('Request rejected'); taskDetailView(mount, params, taskId); }
                   catch (error) { toast(error.message, true); }
                 } })),
-              el('div', { class: 'hint', text: 'Approving moves the end date. Any day it adds will need an outcome.' }),
+              el('div', { class: 'hint', text: 'Approving raises the budget and moves the deadline with it. Any day it adds will need an outcome.' }),
             )
-          : null,
-        scheduleForm,
+          : el('div', { class: 'muted small', text: 'Nothing is waiting on a decision.' }),
       )
     : noDeadlineYet
     ? el('div', { class: 'muted small',
-        text: 'This task has no deadline yet. A Task Assigner needs to set one before a change can be requested.' })
+        text: 'This task has no schedule yet. Set a start date before asking for more days.' })
     : pendingRequest
     ? el(
         'div',
         {},
-        el('div', { class: 'small muted', text: `Requested by ${pendingRequest.requestedByName}: ${formatDate(pendingRequest.currentDueDate)} → ${formatDate(pendingRequest.requestedDueDate)}` }),
+        el('div', { class: 'small muted', text: describeRequest(pendingRequest) }),
         el('div', { class: 'small', style: 'margin:6px 0', text: pendingRequest.reason }),
-        el('div', { class: 'small muted', text: 'Awaiting a Task Assigner decision.' }),
+        el('div', { class: 'small muted', text: 'Awaiting a decision.' }),
       )
     : el(
         'form',
@@ -744,22 +777,21 @@ export async function taskDetailView(mount, params, taskId) {
             event.preventDefault();
             try {
               await api.requestDeadline(task.id, {
-                requestedDueDate: deadlineInput.value,
+                requestedEffortDays: Number(budgetInput.value),
                 reason: reasonInput.value.trim(),
               });
-              toast('Deadline change requested');
+              toast('Asked for a change to the budget');
               taskDetailView(mount, params, taskId);
             } catch (error) {
               toast(error.message, true);
             }
           },
         },
-        field('New end date', deadlineInput,
-          task.startDate
-            ? `A task runs for at most ${maxEffortDays} days, so this cannot go past ${formatDate(addDays(task.startDate, maxEffortDays - 1))}.`
-            : null),
+        field('Working days needed', budgetInput,
+          `Budgeted ${task.effortDays ?? '—'}. A task runs for at most ${maxEffortDays}.`),
+        requestPreview,
         field('Reason', reasonInput),
-        el('button', { type: 'submit', text: 'Request deadline change' }),
+        el('button', { type: 'submit', text: 'Request more days' }),
       );
 
   // --- comments -----------------------------------------------------------
@@ -800,45 +832,6 @@ export async function taskDetailView(mount, params, taskId) {
     'Activity history',
     el('ul', { class: 'timeline' }, data.history.map(historyLine)),
   );
-
-  // --- the reviewer agrees the proposed dates ------------------------------
-  const scheduleDecisionNote = el('input', {
-    type: 'text',
-    placeholder: 'Optional note — required in spirit when sending back',
-  });
-  const scheduleDecisionBody =
-    task.scheduleState !== 'proposed'
-      ? null
-      : isReviewer || isManager
-        ? el(
-            'div',
-            {},
-            el('div', { class: 'small' },
-              `${task.startDate ? formatDate(task.startDate) : '—'} → ` +
-              `${task.dueDate ? formatDate(task.dueDate) : '—'}`),
-            el('div', { class: 'small muted', style: 'margin:6px 0' },
-              'Nothing can start until these are agreed, so this is somebody waiting.'),
-            field('Note', scheduleDecisionNote),
-            el('div', { class: 'row' },
-              el('button', { class: 'primary', text: 'Agree dates', onclick: async () => {
-                try {
-                  await api.decideSchedule(task.id, { approve: true, note: scheduleDecisionNote.value.trim() || null });
-                  toast('Dates agreed');
-                  taskDetailView(mount, params, taskId);
-                } catch (error) { toast(error.message, true); }
-              } }),
-              el('button', { class: 'danger', text: 'Send back', onclick: async () => {
-                try {
-                  await api.decideSchedule(task.id, { approve: false, note: scheduleDecisionNote.value.trim() || null });
-                  toast('Sent back to the owner');
-                  taskDetailView(mount, params, taskId);
-                } catch (error) { toast(error.message, true); }
-              } })),
-            el('div', { class: 'hint' },
-              'Sending back keeps the dates as a draft for the owner to revise.'),
-          )
-        : el('div', { class: 'small muted' },
-            `Waiting on ${task.reviewerName ?? 'the reviewer'} to agree these dates.`);
 
   // --- the daily outcome log ----------------------------------------------
   const dayLogOutcome = el('input', { type: 'text', placeholder: 'What did today produce?' });
@@ -928,8 +921,10 @@ export async function taskDetailView(mount, params, taskId) {
         'div',
         {},
         clarificationBox,
-        scheduleDecisionBody ? card('Dates awaiting review', scheduleDecisionBody) : null,
-        card(isManager ? 'Schedule' : 'Deadline', deadlineBody),
+        // Setting the schedule is the owner's; asking for more days is a
+        // separate conversation, so they are separate cards.
+        canSetSchedule ? card(noDeadlineYet ? 'Set the schedule' : 'Schedule', scheduleForm) : null,
+        card('Effort budget', deadlineBody),
       ),
     ),
   );

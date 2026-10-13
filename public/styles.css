@@ -204,6 +204,21 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-d
    its input so the two cannot drift apart as the dates change. */
 
 .day-plan { display: grid; gap: 8px; }
+/* The deadline the system worked out — shown, never typed. */
+.derived-due {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin: 2px 0 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.derived-due-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.derived-due-date { font-weight: 650; color: var(--accent); font-size: 15px; }
+
 .day-plan-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; }
 .day-plan-row input { margin: 0; }
 .day-plan-label {

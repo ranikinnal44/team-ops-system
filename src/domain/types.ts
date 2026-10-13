@@ -235,8 +235,8 @@ export type DeadlineChangeRequest = {
   readonly taskTitle: string;
   readonly requestedById: string;
   readonly requestedByName: string;
-  readonly currentDueDate: IsoDate;
-  readonly requestedDueDate: IsoDate;
+  readonly currentEffortDays: number;
+  readonly requestedEffortDays: number;
   readonly reason: string;
   readonly status: DeadlineRequestStatus;
   readonly decidedById: string | null;

@@ -15,7 +15,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDb, startTestServer, loginAs, type TestServer } from './helpers.ts';
-import { addDays, todayDate, isWeekend } from '../src/lib/dates.ts';
+import { workingDayDeadline, addDays, todayDate, isWeekend } from '../src/lib/dates.ts';
 
 /**
  * The first Monday strictly after today.
@@ -115,13 +115,18 @@ const getTask = async (cast: Cast, token: string, id: string) =>
   cast.server.request('GET', `/api/tasks/${id}`, { token });
 
 /** Three consecutive working days starting next Monday, each with an outcome. */
-function threeDaySchedule(): { startDate: string; dueDate: string; dayPlans: { date: string; outcome: string }[] } {
+function threeDaySchedule(): {
+  startDate: string;
+  effortDays: number;
+  dayPlans: { date: string; outcome: string }[];
+} {
   const start = nextMonday();
   const days = [start, addDays(start, 1), addDays(start, 2)];
   assert.ok(days.every((d) => !isWeekend(d)), 'Monday to Wednesday should contain no weekend');
   return {
     startDate: days[0] as string,
-    dueDate: days[2] as string,
+    // The deadline is derived from this; no due date is supplied anywhere.
+    effortDays: 3,
     dayPlans: days.map((date, i) => ({ date, outcome: `Day ${i + 1}: latch rig step ${i + 1}` })),
   };
 }
@@ -168,69 +173,65 @@ describe('the happy path, one task, three roles', () => {
     );
   });
 
-  test('nothing starts on an unagreed schedule', async () => {
+  test('nothing starts without a start date', async () => {
     const refused = await cast.server.request('PATCH', `/api/tasks/${taskId}`, {
       token: cast.owner,
       body: { status: 'in_progress' },
     });
     assert.equal(refused.status, 409);
-    assert.match(refused.body.error.message, /no agreed dates/i);
+    assert.match(refused.body.error.message, /no start date/i);
   });
 
-  test('the owner proposes the dates — this is the commitment', async () => {
-    const proposed = await cast.server.request('POST', `/api/tasks/${taskId}/schedule`, {
+  test('the owner says when they will start, and the deadline follows', async () => {
+    const schedule = threeDaySchedule();
+    const set = await cast.server.request('POST', `/api/tasks/${taskId}/schedule`, {
       token: cast.owner,
-      body: threeDaySchedule(),
+      body: schedule,
     });
-    assert.equal(proposed.status, 200, JSON.stringify(proposed.body));
-    assert.equal(proposed.body.scheduleState, 'proposed');
-    assert.ok(proposed.body.exceptions.includes('SCHEDULE_AWAITING_REVIEW'));
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+    // Nobody agrees it: the budget was agreed when it was set, and the start
+    // date is the owner's to choose.
+    assert.equal(set.body.scheduleState, 'locked');
+    assert.equal(set.body.startDate, schedule.startDate);
+    // Derived, never typed — and counted in working days.
+    assert.equal(set.body.dueDate, workingDayDeadline(schedule.startDate, schedule.effortDays));
   });
 
   test('a multi-day proposal must say what each day delivers', async () => {
     const other = await newTask(cast, { ownerId: cast.ids.owner });
-    const { startDate, dueDate } = threeDaySchedule();
+    const { startDate, effortDays } = threeDaySchedule();
     const refused = await cast.server.request('POST', `/api/tasks/${other.id}/schedule`, {
       token: cast.owner,
-      body: { startDate, dueDate },
+      body: { startDate, effortDays },
     });
     assert.equal(refused.status, 400);
     assert.match(refused.body.error.message, /what each day delivers/i);
   });
 
-  test('an uninvolved employee cannot agree somebody else’s dates', async () => {
-    const refused = await cast.server.request('POST', `/api/tasks/${taskId}/schedule/decision`, {
+  test('an uninvolved employee cannot schedule somebody else’s task', async () => {
+    const refused = await cast.server.request('POST', `/api/tasks/${taskId}/schedule`, {
       token: cast.outsider,
-      body: { approve: true },
+      body: threeDaySchedule(),
     });
     assert.ok(refused.status === 403 || refused.status === 404, `got ${refused.status}`);
   });
 
-  test('the owner cannot agree their own dates either', async () => {
-    const refused = await cast.server.request('POST', `/api/tasks/${taskId}/schedule/decision`, {
+  test('the owner cannot take more days than they were budgeted', async () => {
+    const fresh = await newTask(cast, { ownerId: cast.ids.owner });
+    const refused = await cast.server.request('POST', `/api/tasks/${fresh.id}/schedule`, {
       token: cast.owner,
-      body: { approve: true },
+      body: { startDate: nextMonday(), effortDays: 99 },
     });
-    assert.equal(refused.status, 403);
-    assert.match(refused.body.error.message, /reviewer/i);
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error.message, /budgeted/i);
   });
 
-  test('the reviewer agrees them, and they lock', async () => {
-    const agreed = await cast.server.request('POST', `/api/tasks/${taskId}/schedule/decision`, {
-      token: cast.reviewer,
-      body: { approve: true, note: 'Fits the rig booking.' },
-    });
-    assert.equal(agreed.status, 200);
-    assert.equal(agreed.body.scheduleState, 'locked');
-  });
-
-  test('locked dates cannot be edited by anyone, including the manager', async () => {
+  test('an agreed schedule cannot be edited by anyone, including the Task Assigner', async () => {
     const refused = await cast.server.request('PATCH', `/api/tasks/${taskId}`, {
       token: cast.manager,
       body: { dueDate: addDays(nextMonday(), 4) },
     });
-    assert.equal(refused.status, 409);
-    assert.match(refused.body.error.message, /locked/i);
+    assert.ok(refused.status === 400 || refused.status === 409, `got ${refused.status}`);
   });
 
   test('now the owner can start', async () => {
@@ -318,8 +319,10 @@ describe('the happy path, one task, three roles', () => {
     const byKind = new Map<string, string>(
       seen.body.history.map((h: any) => [h.kind, h.actorName]),
     );
+    // The owner sets the schedule and nobody agrees it, so there is one
+    // schedule entry on the record rather than a proposal and an approval.
     assert.equal(byKind.get('schedule_proposed'), 'Demo Employee 1');
-    assert.equal(byKind.get('schedule_approved'), 'Demo Reviewer');
+    assert.ok(!byKind.has('schedule_approved'), 'nothing approves a schedule now');
     assert.equal(byKind.get('day_outcome_recorded'), 'Demo Employee 1');
     assert.ok(byKind.has('status_changed'));
   });
@@ -332,52 +335,29 @@ describe('the rework loops', () => {
   before(async () => (cast = await assemble()));
   after(async () => cast.server.close());
 
-  test('the reviewer sends dates back, and the owner proposes again', async () => {
+  test('a schedule already set cannot be quietly replaced', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner });
-    await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
+    const first = await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
       body: threeDaySchedule(),
     });
+    assert.equal(first.status, 200);
 
-    const sentBack = await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: cast.reviewer,
-      body: { approve: false, note: 'The rig is booked that week.' },
-    });
-    assert.equal(sentBack.status, 200);
-    assert.equal(sentBack.body.scheduleState, 'unset', 'a rejected schedule returns to draft');
-
-    // Still cannot start — a sent-back schedule is not an agreed one.
-    const refused = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+    // There is no approval to withdraw and no rejection to recover from, so
+    // the only route to different dates is a change to the budget.
+    const again = await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { status: 'in_progress' },
+      body: threeDaySchedule(),
     });
-    assert.equal(refused.status, 409);
-
-    const start = addDays(nextMonday(), 7);
-    const retry = await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
-      token: cast.owner,
-      body: {
-        startDate: start,
-        dueDate: addDays(start, 2),
-        dayPlans: [0, 1, 2].map((i) => ({ date: addDays(start, i), outcome: `Revised day ${i + 1}` })),
-      },
-    });
-    assert.equal(retry.status, 200);
-    assert.equal(retry.body.scheduleState, 'proposed');
-
-    const agreed = await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: cast.reviewer,
-      body: { approve: true },
-    });
-    assert.equal(agreed.body.scheduleState, 'locked');
+    assert.equal(again.status, 409);
+    assert.match(again.body.error.message, /already has a start date/i);
   });
 
   test('the reviewer sends submitted work back, and the owner picks it up again', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
       token: cast.reviewer,
@@ -408,10 +388,9 @@ describe('the rework loops', () => {
 
   test('a blocked task has to name its blocker, and can still report its day', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
       token: cast.reviewer,
@@ -463,7 +442,8 @@ describe('asking for more time, from all three sides', () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner });
     taskId = id;
     const schedule = threeDaySchedule();
-    lockedDue = schedule.dueDate;
+    // Derived now, so read it back rather than asserting one we chose.
+    lockedDue = workingDayDeadline(schedule.startDate, schedule.effortDays);
     await cast.server.request('POST', `/api/tasks/${taskId}/schedule`, {
       token: cast.owner,
       body: schedule,
@@ -487,7 +467,7 @@ describe('asking for more time, from all three sides', () => {
   test('somebody who does not own it cannot ask on their behalf', async () => {
     const refused = await cast.server.request('POST', `/api/tasks/${taskId}/deadline-requests`, {
       token: cast.outsider,
-      body: { requestedDueDate: addDays(lockedDue, 1), reason: 'Looks tight.' },
+      body: { requestedEffortDays: 4, reason: 'Looks tight.' },
     });
     assert.ok(refused.status === 403 || refused.status === 404);
   });
@@ -495,7 +475,7 @@ describe('asking for more time, from all three sides', () => {
   test('the owner requests it, with a reason', async () => {
     const asked = await cast.server.request('POST', `/api/tasks/${taskId}/deadline-requests`, {
       token: cast.owner,
-      body: { requestedDueDate: addDays(lockedDue, 1), reason: 'Load cell arrived two days late.' },
+      body: { requestedEffortDays: 4, reason: 'Load cell arrived two days late.' },
     });
     assert.equal(asked.status, 201, JSON.stringify(asked.body));
     assert.equal(asked.body.status, 'pending');
@@ -504,7 +484,7 @@ describe('asking for more time, from all three sides', () => {
   test('only one request can be open at a time', async () => {
     const second = await cast.server.request('POST', `/api/tasks/${taskId}/deadline-requests`, {
       token: cast.owner,
-      body: { requestedDueDate: addDays(lockedDue, 2), reason: 'And a bit more.' },
+      body: { requestedEffortDays: 5, reason: 'And a bit more.' },
     });
     assert.equal(second.status, 409);
   });
@@ -516,10 +496,9 @@ describe('asking for more time, from all three sides', () => {
       reviewerId: cast.ids.manager,
       effortDays: 1,
     });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${foreign.id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     await cast.server.request('POST', `/api/tasks/${foreign.id}/schedule/decision`, {
       token: cast.manager,
@@ -527,7 +506,7 @@ describe('asking for more time, from all three sides', () => {
     });
     const asked = await cast.server.request('POST', `/api/tasks/${foreign.id}/deadline-requests`, {
       token: cast.owner,
-      body: { requestedDueDate: addDays(day, 1), reason: 'Rig clash.' },
+      body: { requestedEffortDays: 4, reason: 'Rig clash.' },
     });
     assert.equal(asked.status, 201);
 
@@ -556,7 +535,12 @@ describe('asking for more time, from all three sides', () => {
     assert.equal(decided.body.status, 'approved');
 
     const seen = await getTask(cast, cast.owner, taskId);
-    assert.equal(seen.body.task.dueDate, addDays(lockedDue, 1), 'the deadline should move');
+    // The budget rose by one working day, so the derived deadline follows.
+    assert.equal(
+      seen.body.task.dueDate,
+      workingDayDeadline(seen.body.task.startDate, 4),
+      'the deadline should follow the approved budget',
+    );
     assert.equal(
       seen.body.task.originalDueDate,
       lockedDue,
@@ -566,22 +550,17 @@ describe('asking for more time, from all three sides', () => {
 
   test('an extension cannot be used to break the effort cap', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
-    });
-    await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: cast.reviewer,
-      body: { approve: true },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
 
     const refused = await cast.server.request('POST', `/api/tasks/${id}/deadline-requests`, {
       token: cast.owner,
-      body: { requestedDueDate: addDays(day, 21), reason: 'Much more work than thought.' },
+      body: { requestedEffortDays: 99, reason: 'Much more work than thought.' },
     });
     assert.equal(refused.status, 400);
-    assert.match(refused.body.error.message, /cap is/i);
+    assert.match(refused.body.error.message, /at most 5 working days/i);
   });
 });
 
@@ -760,10 +739,9 @@ describe('invariant: nobody signs off their own work', () => {
       body: { reviewerId: cast.ids.owner },
     });
 
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
       token: cast.manager,
@@ -799,10 +777,9 @@ describe('invariant: 100% means reviewed', () => {
 
   test('a daily outcome cannot push a task to 100% while it is still in progress', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner, effortDays: 1 });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
       token: cast.reviewer,
@@ -850,21 +827,18 @@ describe('finding what is waiting on you', () => {
   /** Drives a task to a proposed-but-undecided schedule. */
   async function proposed(reviewerId: string): Promise<string> {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner, reviewerId, effortDays: 1 });
-    const day = nextMonday();
     await cast.server.request('POST', `/api/tasks/${id}/schedule`, {
       token: cast.owner,
-      body: { startDate: day, dueDate: day },
+      body: { startDate: nextMonday(), effortDays: 1 },
     });
     return id;
   }
 
   /** Drives a task all the way to submitted-for-review. */
-  async function submitted(reviewerId: string, decider: string): Promise<string> {
+  async function submitted(reviewerId: string, _decider: string): Promise<string> {
+    // Scheduling is the owner's alone now, so there is nothing to approve
+    // between setting the dates and starting the work.
     const id = await proposed(reviewerId);
-    await cast.server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: decider,
-      body: { approve: true },
-    });
     await cast.server.request('PATCH', `/api/tasks/${id}`, {
       token: cast.owner,
       body: { status: 'in_progress' },
@@ -910,9 +884,8 @@ describe('finding what is waiting on you', () => {
   });
 
   test('the dashboard carries a queue of only this reviewer’s decisions', async () => {
-    const myProposal = await proposed(cast.ids.reviewer);
     const mySubmission = await submitted(cast.ids.reviewer, cast.reviewer);
-    const theirProposal = await proposed(cast.ids.manager);
+    const theirSubmission = await submitted(cast.ids.manager, cast.manager);
 
     const board = await cast.server.request('GET', '/api/dashboard/manager', {
       token: cast.reviewer,
@@ -921,30 +894,26 @@ describe('finding what is waiting on you', () => {
     const queue = board.body.awaitingMyDecision;
 
     assert.ok(
-      queue.schedules.some((t: any) => t.id === myProposal),
-      'dates proposed to them should be in their queue',
-    );
-    assert.ok(
       queue.reviews.some((t: any) => t.id === mySubmission),
       'work submitted to them should be in their queue',
     );
     assert.ok(
-      !queue.schedules.some((t: any) => t.id === theirProposal),
-      'somebody else’s proposal must not be',
+      !queue.reviews.some((t: any) => t.id === theirSubmission),
+      'somebody else’s submission must not be',
     );
-    assert.equal(
-      queue.total,
-      queue.schedules.length + queue.reviews.length + queue.deadlineRequests.length,
-    );
+    // Schedules are nobody's to agree now, so the queue is sign-offs and
+    // extension requests.
+    assert.equal(queue.total, queue.reviews.length + queue.deadlineRequests.length);
   });
 
   test('the board-wide buckets stay board-wide — the queue narrows, it does not hide', async () => {
-    const theirProposal = await proposed(cast.ids.manager);
-    const board = await cast.server.request('GET', '/api/dashboard/manager', {
-      token: cast.reviewer,
-    });
+    const theirSubmission = await submitted(cast.ids.manager, cast.manager);
+    assert.ok(theirSubmission);
+    // The manager board has no "awaiting review" bucket; the point is that a
+    // reviewer still sees work that is none of their business to decide.
+    const everything = await cast.server.request('GET', '/api/tasks', { token: cast.reviewer });
     assert.ok(
-      board.body.exceptions.scheduleAwaitingReview.some((t: any) => t.id === theirProposal),
+      everything.body.some((t: any) => t.id === theirSubmission),
       'a reviewer still sees the whole plan; they simply also get their own queue',
     );
   });
@@ -957,10 +926,9 @@ describe('finding what is waiting on you', () => {
       token: cast.reviewer,
       body: { status: 'in_progress' },
     });
-    const day = nextMonday();
     const askedMine = await cast.server.request('POST', `/api/tasks/${mine}/deadline-requests`, {
       token: cast.owner,
-      body: { requestedDueDate: addDays(day, 1), reason: 'Rig slipped.' },
+      body: { requestedEffortDays: 4, reason: 'Rig slipped.' },
     });
     assert.equal(askedMine.status, 201, JSON.stringify(askedMine.body));
 
@@ -972,7 +940,7 @@ describe('finding what is waiting on you', () => {
     const askedTheirs = await cast.server.request(
       'POST',
       `/api/tasks/${theirs}/deadline-requests`,
-      { token: cast.owner, body: { requestedDueDate: addDays(day, 1), reason: 'Also slipped.' } },
+      { token: cast.owner, body: { requestedEffortDays: 4, reason: 'Also slipped.' } },
     );
     assert.equal(askedTheirs.status, 201);
 
@@ -997,12 +965,13 @@ describe('finding what is waiting on you', () => {
   });
 
   test('a manager gets a queue of their own, for the work they review', async () => {
-    const theirs = await proposed(cast.ids.manager);
+    // Scheduled alone is not waiting on anybody; it has to reach review.
+    const theirs = await submitted(cast.ids.manager, cast.manager);
     const board = await cast.server.request('GET', '/api/dashboard/manager', {
       token: cast.manager,
     });
     assert.ok(
-      board.body.awaitingMyDecision.schedules.some((t: any) => t.id === theirs),
+      board.body.awaitingMyDecision.reviews.some((t: any) => t.id === theirs),
       'a manager named as reviewer should see it waiting on them too',
     );
   });

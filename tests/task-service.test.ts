@@ -6,7 +6,13 @@ import * as tasks from '../src/services/task.service.ts';
 import * as projects from '../src/services/project.service.ts';
 import { TaskStatus, HistoryKind, ClarificationCode } from '../src/domain/enums.ts';
 import { AppError, ErrorCode } from '../src/lib/errors.ts';
-import { todayDate, addDays } from '../src/lib/dates.ts';
+import {
+  todayDate,
+  addDays,
+  nextWorkingDay,
+  workingDayDeadline,
+  workingDaysInRange,
+} from '../src/lib/dates.ts';
 
 let db: Database;
 beforeEach(() => {
@@ -14,6 +20,13 @@ beforeEach(() => {
 });
 
 const today = (): string => todayDate();
+
+/** The first working day from today — a task cannot start on a weekend. */
+const workStart = (): string => nextWorkingDay(todayDate());
+/** The nth working day of a schedule starting there, weekends skipped. */
+const workDay = (n: number): string =>
+  workingDaysInRange(workStart(), workingDayDeadline(workStart(), 10))[n] as string;
+
 
 function anyPlacement(d: Database): { workstreamId: string; milestoneId: string } {
   const [workstream] = projects.listWorkstreams(d, manager(d));
@@ -32,12 +45,12 @@ describe('task creation', () => {
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P1',
-      startDate: today(),
-      dueDate: addDays(today(), 2),
+      startDate: workStart(),
+      scheduledDays: 3,
       dayPlans: [
-        { date: today(), outcome: 'Torque spec confirmed against the drawing.' },
-        { date: addDays(today(), 1), outcome: 'All six latches measured and logged.' },
-        { date: addDays(today(), 2), outcome: 'Out-of-spec latches re-torqued and signed off.' },
+        { date: workDay(0), outcome: 'Torque spec confirmed against the drawing.' },
+        { date: workDay(1), outcome: 'All six latches measured and logged.' },
+        { date: workDay(2), outcome: 'Out-of-spec latches re-torqued and signed off.' },
       ],
     });
 
@@ -61,7 +74,7 @@ describe('task creation', () => {
         ownerId: employee1(db).id,
         priority: 'P2',
         startDate: today(),
-        dueDate: today(),
+        scheduledDays: 1,
       }),
     );
     const refs = made.map((t) => t.ref);
@@ -82,7 +95,7 @@ describe('task creation', () => {
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: today(),
-          dueDate: today(),
+          scheduledDays: 1,
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.FORBIDDEN,
     );
@@ -99,7 +112,7 @@ describe('task creation', () => {
           ownerId: employee1(db).id,
           priority: 'P2',
           startDate: addDays(today(), 5),
-          dueDate: today(),
+          scheduledDays: 1,
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
     );
@@ -154,33 +167,33 @@ describe('task creation', () => {
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 9),
+          startDate: workStart(),
+          scheduledDays: 2,
         }),
       (error: unknown) =>
         error instanceof AppError &&
         error.code === ErrorCode.VALIDATION &&
-        /budgeted for 1/.test(error.message),
+        /budgeted 1 working day/.test(error.message),
     );
   });
 
-  test('exactly three days is allowed', () => {
+  test('taking fewer days than budgeted is fine — the budget is a ceiling', () => {
+    const start = nextWorkingDay(today());
+    const days = workingDaysInRange(start, workingDayDeadline(start, 3));
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
-      title: 'Right at the limit',
+      title: 'Three of the five budgeted',
       effortDays: 5,
       reviewerId: manager(db).id,
       ownerId: employee1(db).id,
       priority: 'P2',
-      startDate: today(),
-      dueDate: addDays(today(), 2),
-      dayPlans: [
-        { date: today(), outcome: 'Day one.' },
-        { date: addDays(today(), 1), outcome: 'Day two.' },
-        { date: addDays(today(), 2), outcome: 'Day three.' },
-      ],
+      startDate: start,
+      scheduledDays: 3,
+      dayPlans: days.map((date, i) => ({ date, outcome: `Day ${i + 1}.` })),
     });
     assert.equal(created.dayPlans.length, 3);
+    // Derived, and weekend-aware: three working days from the start.
+    assert.equal(created.dueDate, workingDayDeadline(start, 3));
   });
 
   test('a multi-day task with no day outcomes is refused', () => {
@@ -193,8 +206,8 @@ describe('task creation', () => {
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 1),
+          startDate: nextWorkingDay(today()),
+          scheduledDays: 2,
         }),
       (error: unknown) =>
         error instanceof AppError &&
@@ -213,9 +226,9 @@ describe('task creation', () => {
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 1),
-          dayPlans: [{ date: today(), outcome: 'Bench set up.' }],
+          startDate: workStart(),
+          scheduledDays: 2,
+          dayPlans: [{ date: workDay(0), outcome: 'Bench set up.' }],
         }),
       (error: unknown) =>
         error instanceof AppError &&
@@ -233,11 +246,11 @@ describe('task creation', () => {
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 1),
+          startDate: workStart(),
+          scheduledDays: 2,
           dayPlans: [
-            { date: today(), outcome: 'Bench set up.' },
-            { date: addDays(today(), 1), outcome: '   ' },
+            { date: workDay(0), outcome: 'Bench set up.' },
+            { date: workDay(1), outcome: '   ' },
           ],
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
@@ -254,12 +267,12 @@ describe('task creation', () => {
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: today(),
-          dueDate: addDays(today(), 1),
+          startDate: workStart(),
+          scheduledDays: 2,
           dayPlans: [
-            { date: today(), outcome: 'Bench set up.' },
-            { date: addDays(today(), 1), outcome: 'Run complete.' },
-            { date: addDays(today(), 2), outcome: 'A day that is not part of this task.' },
+            { date: workDay(0), outcome: 'Bench set up.' },
+            { date: workDay(1), outcome: 'Run complete.' },
+            { date: workDay(2), outcome: 'A day that is not part of this task.' },
           ],
         }),
       (error: unknown) =>
@@ -276,7 +289,7 @@ describe('task creation', () => {
       ownerId: employee1(db).id,
       priority: 'P2',
       startDate: today(),
-      dueDate: today(),
+      scheduledDays: 1,
     });
     assert.deepEqual(created.dayPlans, []);
   });
@@ -292,7 +305,7 @@ describe('task creation', () => {
           ownerId: 'no-such-user',
           priority: 'P2',
           startDate: today(),
-          dueDate: today(),
+          scheduledDays: 1,
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
     );
@@ -307,7 +320,7 @@ describe('task creation', () => {
       ownerId: employee2(db).id,
       priority: 'P0',
       startDate: today(),
-      dueDate: today(),
+      scheduledDays: 1,
     });
     const history = tasks.listHistory(db, manager(db), created.id);
     assert.equal(history.length, 1);
@@ -565,10 +578,10 @@ describe('deadline change requests', () => {
     const task = taskByRef(db, 'WA-SW-006');
     assert.ok(task);
     assert.ok(task.dueDate);
-    const newDate = addDays(task.dueDate, 2);
+    const asked = (task.effortDays ?? 1) + 1;
 
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: newDate,
+      requestedEffortDays: asked,
       reason: 'Backfill window moved.',
     });
     assert.equal(request.status, 'pending');
@@ -577,7 +590,9 @@ describe('deadline change requests', () => {
     assert.equal(decided.status, 'approved');
 
     const after = tasks.getTask(db, manager(db), task.id);
-    assert.equal(after.dueDate, newDate);
+    // The deadline follows the approved budget, counted in working days.
+    assert.equal(after.effortDays, asked);
+    assert.equal(after.dueDate, workingDayDeadline(task.startDate as string, asked));
     // The first commitment stays visible so slippage can be measured.
     assert.equal(after.originalDueDate, task.dueDate);
   });
@@ -587,7 +602,7 @@ describe('deadline change requests', () => {
     assert.ok(task);
     assert.ok(task.dueDate);
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 2),
+      requestedEffortDays: (task.effortDays ?? 1) + 2,
       reason: 'Other priorities.',
     });
     tasks.decideDeadlineChange(db, manager(db), request.id, {
@@ -602,7 +617,7 @@ describe('deadline change requests', () => {
     assert.ok(task);
     assert.ok(task.dueDate);
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 2),
+      requestedEffortDays: (task.effortDays ?? 1) + 2,
       reason: 'Needs more time.',
     });
     assert.throws(
@@ -616,13 +631,13 @@ describe('deadline change requests', () => {
     assert.ok(task);
     assert.ok(task.dueDate);
     tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 1),
+      requestedEffortDays: (task.effortDays ?? 1) + 1,
       reason: 'First.',
     });
     assert.throws(
       () =>
         tasks.requestDeadlineChange(db, employee3(db), task.id, {
-          requestedDueDate: addDays(task.dueDate as string, 2),
+          requestedEffortDays: (task.effortDays ?? 1) + 2,
           reason: 'Second.',
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.CONFLICT,
@@ -635,13 +650,13 @@ describe('deadline change requests', () => {
     assert.throws(
       () =>
         tasks.requestDeadlineChange(db, employee3(db), task.id, {
-          requestedDueDate: addDays(task.dueDate as string, 20),
+          requestedEffortDays: 99,
           reason: 'Needs a month.',
         }),
       (error: unknown) =>
         error instanceof AppError &&
         error.code === ErrorCode.VALIDATION &&
-        /the cap is 5/.test(error.message),
+        /at most 5 working days/.test(error.message),
     );
   });
 
@@ -652,7 +667,7 @@ describe('deadline change requests', () => {
     assert.deepEqual(task.dayPlans, []);
 
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: addDays(task.dueDate as string, 2),
+      requestedEffortDays: (task.effortDays ?? 1) + 2,
       reason: 'Schema freeze slipped.',
     });
     tasks.decideDeadlineChange(db, manager(db), request.id, { approve: true });
@@ -684,7 +699,7 @@ describe('deadline change requests', () => {
     assert.ok(task);
     assert.ok(task.dueDate);
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedDueDate: addDays(task.dueDate, 2),
+      requestedEffortDays: (task.effortDays ?? 1) + 2,
       reason: 'Once.',
     });
     tasks.decideDeadlineChange(db, manager(db), request.id, { approve: true });

@@ -130,7 +130,6 @@ export const api = {
   createTask: (payload) => request('POST', '/api/tasks', payload),
   updateTask: (id, payload) => request('PATCH', `/api/tasks/${id}`, payload),
   proposeSchedule: (id, payload) => request('POST', `/api/tasks/${id}/schedule`, payload),
-  decideSchedule: (id, payload) => request('POST', `/api/tasks/${id}/schedule/decision`, payload),
   dayLogs: (id) => request('GET', `/api/tasks/${id}/day-logs`),
   recordDayOutcome: (id, payload) => request('POST', `/api/tasks/${id}/day-logs`, payload),
   addComment: (id, body) => request('POST', `/api/tasks/${id}/comments`, { body }),

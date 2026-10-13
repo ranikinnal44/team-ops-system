@@ -44,13 +44,10 @@ const dayLogSchema = object({
 
 const proposeScheduleSchema = object({
   startDate: isoDate(),
-  dueDate: isoDate(),
+  // Optional: the owner takes the whole budget unless they say otherwise.
+  // A due date is never accepted — it is derived from this and the budget.
+  effortDays: optional(int({ min: 1, max: 365 })),
   dayPlans: optional(arrayOf(dayPlanSchema)),
-});
-
-const scheduleDecisionSchema = object({
-  approve: bool(),
-  note: optional(nullable(str({ max: 2000 }))),
 });
 
 const createSchema = object({
@@ -74,7 +71,8 @@ const createSchema = object({
   // The Task Assigner budgets effort; the owner proposes the dates that spend it.
   effortDays: int({ min: 1, max: 365 }),
   startDate: optional(isoDate()),
-  dueDate: optional(isoDate()),
+  /** Working days the task will take. Defaults to the effort budget. */
+  scheduledDays: optional(int({ min: 1, max: 365 })),
   // Required by the service once the task covers more than one day.
   dayPlans: optional(arrayOf(dayPlanSchema, { max: 31 })),
   dependencyTaskIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),
@@ -112,7 +110,8 @@ const updateSchema = object({
 const commentSchema = object({ body: str({ max: 5000 }) });
 
 const deadlineRequestSchema = object({
-  requestedDueDate: isoDate(),
+  /** Days, not a date: the deadline is derived from the budget. */
+  requestedEffortDays: int({ min: 1, max: 365 }),
   reason: str({ max: 1000 }),
 });
 
@@ -234,12 +233,6 @@ export const taskRoutes: Route[] = [
     path: '/api/tasks/:id/schedule',
     handler: ({ db, actor, params, body }) =>
       tasks.proposeSchedule(db, actor, params.id as string, parseOrThrow(proposeScheduleSchema, body)),
-  },
-  {
-    method: 'POST',
-    path: '/api/tasks/:id/schedule/decision',
-    handler: ({ db, actor, params, body }) =>
-      tasks.decideSchedule(db, actor, params.id as string, parseOrThrow(scheduleDecisionSchema, body)),
   },
   {
     method: 'GET',

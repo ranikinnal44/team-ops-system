@@ -36,7 +36,6 @@ const EXCEPTION_OPTIONS = [
   { value: 'BLOCKED', label: 'Blocked' },
   { value: 'DUE_SOON', label: 'Due within 2 days' },
   { value: 'NO_RECENT_UPDATE', label: 'No recent update' },
-  { value: 'SCHEDULE_AWAITING_REVIEW', label: 'Dates awaiting review' },
   { value: 'SCHEDULE_NOT_SET', label: 'Needs dates' },
   { value: 'MISSING_DAILY_UPDATE', label: 'No daily outcome' },
 ];
@@ -207,11 +206,6 @@ export async function taskListView(mount, params) {
           label: 'Work to sign off',
           on: filters.reviewerId === session.user?.id && filters.status === 'review',
           set: { reviewerId: session.user?.id ?? '', status: 'review', exception: '' },
-        },
-        {
-          label: 'Dates to agree',
-          on: filters.reviewerId === session.user?.id && filters.exception === 'SCHEDULE_AWAITING_REVIEW',
-          set: { reviewerId: session.user?.id ?? '', exception: 'SCHEDULE_AWAITING_REVIEW', status: '' },
         },
       ]
     : [];

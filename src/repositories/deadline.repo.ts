@@ -7,7 +7,7 @@ import { toText } from '../db/connection.ts';
 import type { DeadlineChangeRequest } from '../domain/types.ts';
 import { DeadlineRequestStatus, type DeadlineRequestStatus as RequestStatus } from '../domain/enums.ts';
 import { newId } from '../lib/ids.ts';
-import { nowTimestamp, type IsoDate, type IsoTimestamp } from '../lib/dates.ts';
+import { nowTimestamp, type IsoTimestamp } from '../lib/dates.ts';
 
 type RequestRow = {
   id: string;
@@ -16,8 +16,8 @@ type RequestRow = {
   task_title: string;
   requested_by_id: string;
   requested_by_name: string;
-  current_due_date: string;
-  requested_due_date: string;
+  current_effort_days: number;
+  requested_effort_days: number;
   reason: string;
   status: string;
   decided_by_id: string | null;
@@ -42,8 +42,8 @@ const map = (row: RequestRow): DeadlineChangeRequest => ({
   taskTitle: row.task_title,
   requestedById: row.requested_by_id,
   requestedByName: row.requested_by_name,
-  currentDueDate: row.current_due_date,
-  requestedDueDate: row.requested_due_date,
+  currentEffortDays: row.current_effort_days,
+  requestedEffortDays: row.requested_effort_days,
   reason: row.reason,
   status: row.status as RequestStatus,
   decidedById: toText(row.decided_by_id),
@@ -58,8 +58,8 @@ export function insertDeadlineRequest(
   input: {
     taskId: string;
     requestedById: string;
-    currentDueDate: IsoDate;
-    requestedDueDate: IsoDate;
+    currentEffortDays: number;
+    requestedEffortDays: number;
     reason: string;
     createdAt?: IsoTimestamp;
   },
@@ -67,14 +67,14 @@ export function insertDeadlineRequest(
   const id = newId();
   db.prepare(
     `INSERT INTO deadline_change_requests
-       (id, task_id, requested_by_id, current_due_date, requested_due_date, reason, status, created_at)
+       (id, task_id, requested_by_id, current_effort_days, requested_effort_days, reason, status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.taskId,
     input.requestedById,
-    input.currentDueDate,
-    input.requestedDueDate,
+    input.currentEffortDays,
+    input.requestedEffortDays,
     input.reason,
     DeadlineRequestStatus.Pending,
     input.createdAt ?? nowTimestamp(),

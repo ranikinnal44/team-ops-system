@@ -120,7 +120,7 @@ describe('building a project from nothing', () => {
       effortDays: 5,
       reviewerId: manager.id,
       startDate: '2026-10-12',
-      dueDate: '2026-10-12',
+      scheduledDays: 1,
     });
     assert.equal(task.ref, 'AD-MEC-001');
     assert.equal(task.projectName, 'AutoDock');
@@ -140,7 +140,7 @@ describe('building a project from nothing', () => {
       effortDays: 5,
       reviewerId: manager.id,
       startDate: '2026-10-12',
-      dueDate: '2026-10-12',
+      scheduledDays: 1,
     });
     assert.equal(task.ownerId, null, 'structure is laid out before work is handed out');
     assert.equal(task.priority, null);
@@ -248,7 +248,7 @@ describe('structure can be corrected, not just created', () => {
       effortDays: 5,
       reviewerId: manager.id,
       startDate: '2026-10-12',
-      dueDate: '2026-10-12',
+      scheduledDays: 1,
     });
     assert.throws(
       () => projects.deleteMilestone(db, manager, milestoneId),
@@ -269,7 +269,7 @@ describe('structure can be corrected, not just created', () => {
       effortDays: 5,
       reviewerId: manager.id,
       startDate: '2026-10-12',
-      dueDate: '2026-10-12',
+      scheduledDays: 1,
     });
     try {
       projects.deleteWorkstream(db, manager, workstreamId);

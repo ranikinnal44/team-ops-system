@@ -36,13 +36,8 @@ export async function managerView(mount) {
     { title: 'Due within 2 days', tasks: ex.dueWithinTwoDays, emptyText: 'Nothing falls due in the next two days.' },
     { title: 'Blocked', tasks: ex.blocked, emptyText: 'Nothing is blocked.' },
     { title: 'No recent update', tasks: ex.noRecentUpdate, emptyText: 'Everything has been updated recently.' },
-    // These two are people waiting rather than work running late, which is why
-    // they sit with the exceptions instead of in a report somewhere.
-    {
-      title: 'Dates awaiting review',
-      tasks: ex.scheduleAwaitingReview ?? [],
-      emptyText: 'No schedule is waiting on a reviewer.',
-    },
+    // People waiting rather than work running late, which is why it sits with
+    // the exceptions instead of in a report somewhere.
     {
       title: 'Needs dates',
       tasks: ex.scheduleNotSet ?? [],
@@ -304,11 +299,6 @@ export async function managerView(mount) {
           el(
             'div',
             {},
-            queue.schedules.length
-              ? el('div', { class: 'queue-group' },
-                  el('div', { class: 'queue-head', text: 'Dates to agree — nothing starts until you do' }),
-                  el('div', { class: 'task-list' }, taskRows(queue.schedules)))
-              : null,
             queue.reviews.length
               ? el('div', { class: 'queue-group' },
                   el('div', { class: 'queue-head', text: 'Work to sign off' }),

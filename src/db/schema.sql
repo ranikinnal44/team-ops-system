@@ -291,8 +291,10 @@ CREATE TABLE IF NOT EXISTS deadline_change_requests (
   id                 TEXT PRIMARY KEY,
   task_id            TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   requested_by_id    TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  current_due_date   TEXT NOT NULL,
-  requested_due_date TEXT NOT NULL,
+  -- Days, not dates. The deadline is derived from the budget, so asking for a
+  -- later date would be asking for the wrong thing: what is short is effort.
+  current_effort_days   INTEGER NOT NULL CHECK (current_effort_days >= 1),
+  requested_effort_days INTEGER NOT NULL CHECK (requested_effort_days >= 1),
   reason             TEXT NOT NULL,
   status             TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
   decided_by_id      TEXT REFERENCES users(id) ON DELETE SET NULL,

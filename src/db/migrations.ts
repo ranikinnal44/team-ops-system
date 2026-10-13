@@ -23,6 +23,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readSchema, type Database } from './connection.ts';
 import { hashPasscode } from '../lib/passcode.ts';
+import { workingDaysInclusive } from '../lib/dates.ts';
 import { config } from '../config/index.ts';
 
 type ColumnInfo = { name: string; notnull: number };
@@ -150,6 +151,42 @@ export function applyInPlaceMigrations(db: Database): void {
   // nothing for an imported outcome's date to be derived from.
   if (hasTable(db, 'deliverables') && isNotNull(db, 'deliverables', 'due_date')) {
     rebuildTable(db, 'deliverables');
+  }
+
+  // --- v12: a change request asks for DAYS, not a date --------------------
+  // The deadline is derived from the budget now, so a request naming a date
+  // would be asking for the wrong thing. The table is rebuilt; any request
+  // still open is carried across by converting its window into working days,
+  // because losing somebody's pending ask to a migration is worse than an
+  // approximate number they can see and correct.
+  if (hasTable(db, 'deadline_change_requests') && hasColumn(db, 'deadline_change_requests', 'current_due_date')) {
+    const rows = db
+      .prepare(
+        `SELECT r.id, r.current_due_date, r.requested_due_date, t.start_date
+           FROM deadline_change_requests r
+           JOIN tasks t ON t.id = r.task_id`,
+      )
+      .all() as { id: string; current_due_date: string; requested_due_date: string; start_date: string | null }[];
+
+    db.exec('ALTER TABLE deadline_change_requests ADD COLUMN current_effort_days INTEGER');
+    db.exec('ALTER TABLE deadline_change_requests ADD COLUMN requested_effort_days INTEGER');
+    for (const row of rows) {
+      const from = row.start_date ?? row.current_due_date;
+      db.prepare(
+        'UPDATE deadline_change_requests SET current_effort_days = ?, requested_effort_days = ? WHERE id = ?',
+      ).run(
+        Math.max(1, workingDaysInclusive(from, row.current_due_date)),
+        Math.max(1, workingDaysInclusive(from, row.requested_due_date)),
+        row.id,
+      );
+    }
+    // Anything the join could not reach gets the smallest honest value.
+    db.exec(
+      `UPDATE deadline_change_requests
+          SET current_effort_days = COALESCE(current_effort_days, 1),
+              requested_effort_days = COALESCE(requested_effort_days, 1)`,
+    );
+    rebuildTable(db, 'deadline_change_requests');
   }
 
   // --- v10: per-user passcodes -------------------------------------------

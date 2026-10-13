@@ -10,9 +10,14 @@ import { applyInPlaceMigrations } from './migrations.ts';
 import { config } from '../config/index.ts';
 import { nowTimestamp } from '../lib/dates.ts';
 
-export const SCHEMA_VERSION = '11';
+export const SCHEMA_VERSION = '12';
 
 /**
+ * Schema 12 rebuilt `deadline_change_requests` around working DAYS rather
+ * than dates: a task's deadline is now derived from its effort budget and a
+ * start date, so asking for a later date no longer means anything. Open
+ * requests are carried across by converting their window into working days.
+ *
  * Schema 11 added `auth_events`: the authentication audit trail, and the
  * memory the login throttle counts failures out of. Purely additive, so
  * `CREATE TABLE IF NOT EXISTS` in the schema file brings a v10 database up to

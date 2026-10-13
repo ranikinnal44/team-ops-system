@@ -2,7 +2,13 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Database } from '../src/db/connection.ts';
 import { freshDb, startTestServer, loginAs, type TestServer } from './helpers.ts';
-import { addDays, todayDate } from '../src/lib/dates.ts';
+import {
+  addDays,
+  todayDate,
+  nextWorkingDay,
+  workingDayDeadline,
+  workingDaysInRange,
+} from '../src/lib/dates.ts';
 
 let db: Database;
 let server: TestServer;
@@ -159,6 +165,9 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
     const employee = users.body.find((u: { email: string }) => u.email === 'demo.employee1@example.com');
     const reviewer = users.body.find((u: { email: string }) => u.email === 'demo.employee2@example.com');
 
+    const flowStart = nextWorkingDay(todayDate());
+    const flowDays = workingDaysInRange(flowStart, workingDayDeadline(flowStart, 3));
+
     const created = await server.request('POST', '/api/tasks', {
       token: managerToken,
       body: {
@@ -170,13 +179,13 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
         reviewerId: reviewer.id,
         effortDays: 5,
         priority: 'P1',
-        startDate: todayDate(),
-        dueDate: addDays(todayDate(), 2),
-        dayPlans: [
-          { date: todayDate(), outcome: 'Approach drafted.' },
-          { date: addDays(todayDate(), 1), outcome: 'Implementation reviewed.' },
-          { date: addDays(todayDate(), 2), outcome: 'Evidence captured and linked.' },
-        ],
+        startDate: flowStart,
+        // Three of the five budgeted days; the deadline follows from this.
+        scheduledDays: 3,
+        dayPlans: flowDays.map((date, i) => ({
+          date,
+          outcome: ['Approach drafted.', 'Implementation reviewed.', 'Evidence captured and linked.'][i] as string,
+        })),
       },
     });
     assert.equal(created.status, 201);
@@ -264,17 +273,18 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
         t.ownerName === 'Demo Employee 1' && t.dueDate < addDays(t.startDate, 2),
     );
     assert.ok(task, 'expected an owned not-started task with schedule headroom');
-    const extended = addDays(task.startDate, 2);
+    // Four budgeted working days from the start, counted the way the system does.
+    const extended = workingDayDeadline(task.startDate, 4);
 
     const tooFar = await server.request('POST', `/api/tasks/${task.id}/deadline-requests`, {
       token: employeeToken,
-      body: { requestedDueDate: addDays(task.startDate, 9), reason: 'Supplier delay.' },
+      body: { requestedEffortDays: 99, reason: 'Supplier delay.' },
     });
-    assert.equal(tooFar.status, 400, 'the span limit holds on the request path too');
+    assert.equal(tooFar.status, 400, 'the cap holds on the request path too');
 
     const requested = await server.request('POST', `/api/tasks/${task.id}/deadline-requests`, {
       token: employeeToken,
-      body: { requestedDueDate: extended, reason: 'Supplier delay.' },
+      body: { requestedEffortDays: 4, reason: 'Supplier delay.' },
     });
     assert.equal(requested.status, 201);
 
@@ -447,40 +457,23 @@ describe('dates at the API boundary', () => {
     });
     assert.equal(earlyStart.status, 409);
 
-    const proposed = await server.request('POST', `/api/tasks/${id}/schedule`, {
+    // The owner says when they start, and takes one of the two budgeted days.
+    const start = nextWorkingDay(todayDate());
+    const scheduled = await server.request('POST', `/api/tasks/${id}/schedule`, {
       token: employeeToken,
-      body: { startDate: todayDate(), dueDate: todayDate() },
+      body: { startDate: start, effortDays: 1 },
     });
-    assert.equal(proposed.status, 200);
-    assert.equal(proposed.body.scheduleState, 'proposed');
-    assert.ok(proposed.body.exceptions.includes('SCHEDULE_AWAITING_REVIEW'));
-
-    // Still not startable: proposed is not agreed.
-    const stillEarly = await server.request('PATCH', `/api/tasks/${id}`, {
-      token: employeeToken,
-      body: { status: 'in_progress' },
-    });
-    assert.equal(stillEarly.status, 409);
-
-    // The owner cannot wave their own dates through.
-    const selfApprove = await server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: employeeToken,
-      body: { approve: true },
-    });
-    assert.equal(selfApprove.status, 403);
-
-    const agreed = await server.request('POST', `/api/tasks/${id}/schedule/decision`, {
-      token: reviewerToken,
-      body: { approve: true },
-    });
-    assert.equal(agreed.status, 200);
-    assert.equal(agreed.body.scheduleState, 'locked');
+    assert.equal(scheduled.status, 200, JSON.stringify(scheduled.body));
+    assert.equal(scheduled.body.startDate, start);
+    // Derived from the budget in working days — never typed by anybody.
+    assert.equal(scheduled.body.dueDate, workingDayDeadline(start, 1));
+    assert.equal(scheduled.body.scheduleState, 'locked', 'a start date is the schedule');
 
     const started = await server.request('PATCH', `/api/tasks/${id}`, {
       token: employeeToken,
       body: { status: 'in_progress' },
     });
-    assert.equal(started.status, 200, 'agreed dates unlock the work');
+    assert.equal(started.status, 200, 'a scheduled task can be started');
   });
 
   test('a date sent to a milestone is dropped, not stored', async () => {

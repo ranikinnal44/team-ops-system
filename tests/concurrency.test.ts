@@ -23,7 +23,7 @@ function newTask(db: Database): ReturnType<typeof tasks.createTask> {
     ownerId: employee1(db).id,
     reviewerId: employee2(db).id,
     startDate: todayDate(),
-    dueDate: todayDate(),
+    scheduledDays: 1,
   } as Parameters<typeof tasks.createTask>[2]);
 }
 

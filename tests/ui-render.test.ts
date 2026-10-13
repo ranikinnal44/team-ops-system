@@ -439,7 +439,8 @@ describe('views render against real AutoDock data', () => {
     const asManager = mount();
     await views.taskList.taskListView(asManager, new URLSearchParams());
     const labels = findByClass(asManager, 'lens').map((n) => n.text());
-    assert.deepEqual(labels, ['Work to sign off', 'Dates to agree']);
+    // Only one lens now: dates are nobody's to agree.
+    assert.deepEqual(labels, ['Work to sign off']);
 
     await signIn('faizan@example.com');
     const asEmployee = mount();

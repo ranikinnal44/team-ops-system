@@ -18,11 +18,13 @@
  * apply to work added and rescheduled inside the system.
  */
 import {
-  addDays,
   daysBetween,
   formatDateHuman,
   workingDaysInclusive,
   type IsoDate,
+  isWeekend,
+  workingDayDeadline,
+  workingDaysInRange,
 } from '../lib/dates.ts';
 import { validationError, type ErrorDetail } from '../lib/errors.ts';
 import type { TaskDayPlan } from './types.ts';
@@ -40,10 +42,15 @@ export function taskSpanDays(start: IsoDate, due: IsoDate): number {
   return daysBetween(start, due) + 1;
 }
 
-/** Every calendar date the task covers, from start to due inclusive. */
+/**
+ * Every day the task is actually worked, from start to due inclusive.
+ *
+ * Weekends are omitted. A task running Thursday to Monday is three days of
+ * work, not five, and asking somebody what they will deliver on Saturday is
+ * asking them to make something up.
+ */
 export function scheduleDays(start: IsoDate, due: IsoDate): IsoDate[] {
-  const span = taskSpanDays(start, due);
-  return Array.from({ length: Math.max(span, 0) }, (_, i) => addDays(start, i));
+  return workingDaysInRange(start, due);
 }
 
 export type ScheduleInput = {
@@ -254,6 +261,68 @@ export type ProposedSchedule = {
  * nobody's problem but the owner's, and the system has no business forbidding
  * it. Needing more is what the deadline extension exists for.
  */
+/**
+ * The schedule a start date implies.
+ *
+ * The owner says when they will begin and, if they need fewer, how many of
+ * the budgeted days they will take. The deadline follows from that, counted
+ * in working days — nobody types a due date, so nobody can quietly give
+ * themselves a longer window than they were given, and the weekend
+ * arithmetic is done here rather than in somebody's head.
+ *
+ * The budget is a ceiling, not a quota. Finishing three days of work in two
+ * is nobody's problem but the owner's; needing a fourth is what the effort
+ * change request exists for.
+ */
+export function scheduleFromStart(
+  startDate: IsoDate | null | undefined,
+  budgetDays: number,
+  options: {
+    /** Days the owner will actually take. Defaults to the whole budget. */
+    readonly effortDays?: number | null;
+    readonly dayPlans?: readonly { date: IsoDate; outcome: string }[] | undefined;
+  } = {},
+  maxEffortDays: number = DEFAULT_MAX_TASK_EFFORT_DAYS,
+): ProposedSchedule {
+  if (startDate === null || startDate === undefined) {
+    throw validationError('A start date is needed to work out the deadline', [
+      { path: 'startDate', message: 'is required — say when you will start' },
+    ]);
+  }
+  if (isWeekend(startDate)) {
+    throw validationError('A task cannot start on a weekend', [
+      { path: 'startDate', message: 'pick a working day — the deadline is counted in them' },
+    ]);
+  }
+
+  const taking = options.effortDays ?? budgetDays;
+  if (!Number.isInteger(taking) || taking < 1) {
+    throw validationError('Say how many working days this will take', [
+      { path: 'effortDays', message: 'must be a whole number of days, at least 1' },
+    ]);
+  }
+  if (taking > budgetDays) {
+    throw validationError(
+      `This task is budgeted ${budgetDays} working day${budgetDays === 1 ? '' : 's'}; ` +
+        `${taking} were asked for. Request a change to the budget instead.`,
+      [{ path: 'effortDays', message: `must be ${budgetDays} or fewer` }],
+    );
+  }
+  if (taking > maxEffortDays) {
+    throw validationError(`A task runs for at most ${maxEffortDays} working days.`, [
+      { path: 'effortDays', message: `must be ${maxEffortDays} or fewer` },
+    ]);
+  }
+
+  const dueDate = workingDayDeadline(startDate, taking);
+  return {
+    startDate,
+    dueDate,
+    effortUsed: taking,
+    dayPlans: normaliseDayPlans(startDate, dueDate, options.dayPlans),
+  };
+}
+
 export function normaliseProposedSchedule(
   input: ScheduleInput,
   effortDays: number,

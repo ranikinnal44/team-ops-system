@@ -98,6 +98,49 @@ export function workingDaysInclusive(start: IsoDate, due: IsoDate): number {
   return count;
 }
 
+/**
+ * The first working day on or after `date`.
+ *
+ * Used to answer "when does this actually begin" for a date that lands on a
+ * weekend, without silently moving what someone typed.
+ */
+export function nextWorkingDay(date: IsoDate): IsoDate {
+  let cursor = date;
+  while (isWeekend(cursor)) cursor = addDays(cursor, 1);
+  return cursor;
+}
+
+/**
+ * The date `effortDays` working days after `start`, counting `start` itself as
+ * the first when it is a working day.
+ *
+ * One day of effort starting Monday finishes Monday. Five finish Friday. Five
+ * starting Thursday finish the following Wednesday, because the weekend is not
+ * worked — which is the whole point of deriving a deadline rather than letting
+ * somebody count calendar squares and get it wrong.
+ */
+export function workingDayDeadline(start: IsoDate, effortDays: number): IsoDate {
+  if (effortDays < 1) {
+    throw new RangeError(`effortDays must be at least 1, got ${effortDays}`);
+  }
+  let cursor = nextWorkingDay(start);
+  let remaining = effortDays - 1;
+  while (remaining > 0) {
+    cursor = nextWorkingDay(addDays(cursor, 1));
+    remaining -= 1;
+  }
+  return cursor;
+}
+
+/** Every working day from `start` to `due` inclusive, weekends omitted. */
+export function workingDaysInRange(start: IsoDate, due: IsoDate): IsoDate[] {
+  const days: IsoDate[] = [];
+  for (let cursor = start; daysBetween(cursor, due) >= 0; cursor = addDays(cursor, 1)) {
+    if (!isWeekend(cursor)) days.push(cursor);
+  }
+  return days;
+}
+
 /** Monday-to-Sunday week containing `date`, as inclusive bounds. */
 export function weekBounds(date: IsoDate): { start: IsoDate; end: IsoDate } {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];

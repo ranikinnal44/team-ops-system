@@ -136,6 +136,38 @@ export const daysInRange = (start, end) => {
   return out;
 };
 
+/** Saturday or Sunday — the days a task is never worked on. */
+const isWeekendIso = (iso) => {
+  const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+};
+
+/** The first working day on or after `iso`. */
+export const nextWorkingIso = (iso) => {
+  let cursor = iso;
+  while (cursor && isWeekendIso(cursor)) cursor = addDays(cursor, 1);
+  return cursor;
+};
+
+/**
+ * `count` working days starting at `start`, weekends skipped.
+ *
+ * The same arithmetic the server does, so the deadline the form shows is the
+ * deadline it will get back. Duplicated deliberately: a form that cannot say
+ * what a date means until it has asked the server is a form that lies for a
+ * moment every time somebody types.
+ */
+export const workingDaysFrom = (start, count) => {
+  if (!start) return [];
+  const days = [];
+  let cursor = nextWorkingIso(start);
+  while (days.length < count) {
+    days.push(cursor);
+    cursor = nextWorkingIso(addDays(cursor, 1));
+  }
+  return days;
+};
+
 export const addDays = (iso, days) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);

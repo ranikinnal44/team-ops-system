@@ -17,7 +17,6 @@ import {
     ExceptionFlag,
   PRIORITY_RANK,
   DeadlineRequestStatus,
-  ScheduleState,
   CLARIFICATION_LABEL,
   type ClarificationCode,
 } from '../domain/enums.ts';
@@ -52,7 +51,6 @@ export type Summary = {
   /** In progress with no daily outcome logged for the last working day. */
   missingDailyUpdate: number;
   /** Proposed dates sitting with a reviewer — work blocked until decided. */
-  awaitingScheduleReview: number;
   /** Assigned and budgeted, but with no dates proposed yet. */
   scheduleNotSet: number;
   noDueDate: number;
@@ -78,7 +76,6 @@ export function summarise(tasks: readonly TaskView[], today: IsoDate): Summary {
     ).length,
     noUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.NoRecentUpdate)).length,
     missingDailyUpdate: tasks.filter((t) => hasFlag(t, ExceptionFlag.MissingDailyUpdate)).length,
-    awaitingScheduleReview: tasks.filter((t) => hasFlag(t, ExceptionFlag.ScheduleAwaitingReview)).length,
     scheduleNotSet: tasks.filter((t) => hasFlag(t, ExceptionFlag.ScheduleNotSet)).length,
     // Open work carrying no agreed deadline at all — invisible to every
     // deadline rule until someone sets one, so it is counted explicitly.
@@ -95,9 +92,7 @@ export type ExceptionBuckets = {
   dueWithinTwoDays: TaskView[];
   /** In progress, but the last working day produced no reported outcome. */
   missingDailyUpdate: TaskView[];
-  /** Dates proposed, reviewer has not decided — nobody can start these. */
-  scheduleAwaitingReview: TaskView[];
-  /** Assigned and budgeted, but the owner has not proposed dates. */
+  /** Assigned and budgeted, but the owner has not said when they start. */
   scheduleNotSet: TaskView[];
 };
 
@@ -114,7 +109,6 @@ export function bucketExceptions(tasks: readonly TaskView[]): ExceptionBuckets {
     noRecentUpdate: pick(ExceptionFlag.NoRecentUpdate),
     dueWithinTwoDays: pick(ExceptionFlag.DueSoon),
     missingDailyUpdate: pick(ExceptionFlag.MissingDailyUpdate),
-    scheduleAwaitingReview: pick(ExceptionFlag.ScheduleAwaitingReview),
     scheduleNotSet: pick(ExceptionFlag.ScheduleNotSet),
   };
 }
@@ -179,8 +173,6 @@ export type ClarificationSummary = {
  * and their own queue was equally buried.
  */
 export type DecisionQueue = {
-  /** Proposed schedules this person has to agree or send back. */
-  schedules: TaskView[];
   /** Work submitted for their sign-off. */
   reviews: TaskView[];
   /** Extension requests on tasks they review. */
@@ -215,9 +207,6 @@ export function decisionQueue(
   actor: Actor,
 ): DecisionQueue {
   const mine = tasks.filter((task) => task.reviewerId === actor.id);
-  const schedules = mine
-    .filter((task) => task.scheduleState === ScheduleState.Proposed)
-    .sort(byAttention);
   const reviews = mine.filter((task) => task.status === TaskStatus.Review).sort(byAttention);
 
   // A request is theirs to decide when they review the task it is about. A
@@ -229,10 +218,9 @@ export function decisionQueue(
   );
 
   return {
-    schedules,
     reviews,
     deadlineRequests,
-    total: schedules.length + reviews.length + deadlineRequests.length,
+    total: reviews.length + deadlineRequests.length,
   };
 }
 
