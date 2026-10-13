@@ -27,11 +27,13 @@ Every task has exactly one owner. Supporting members can help and can report on 
 work, but only the owner drives the task's status. Work with nobody's name on it shows up
 as unassigned rather than being quietly parked on whoever typed it in.
 
-**2. Dates are agreed, not assigned.**
-A Task Assigner sets an *effort budget* — how many working days a task is worth. The **owner**
-proposes the actual start and end dates that spend that budget. The **reviewer** agrees
-them. Once agreed, the dates lock: they move only through an approved extension, which
-leaves a record of who approved it and why. Nothing can start before its dates are agreed.
+**2. Deadlines are calculated, not typed.**
+A Task Assigner sets an *effort budget* — how many working days a task is worth. The
+**Member** says which day they start. The deadline follows from the two, counted over
+working days only, so a weekend never eats into the time. Nobody types a due date, and
+nobody can quietly take longer than they were given. Needing more days means asking, and
+the approval leaves a record of who agreed it and why. Nothing can start before a start
+date is set.
 
 **3. Work is signed off by someone other than whoever did it.**
 The owner applies for review; they cannot grant it. Only the task's named reviewer (or a
@@ -87,8 +89,7 @@ Coloured tags on a task tell you why it needs attention:
 | **Blocked** | Something outside the task is stopping it. The blocker is named on the task. |
 | **No recent update** | Nobody has touched the task in more than 2 working days. |
 | **No daily outcome logged** | The task is in progress but yesterday produced no reported outcome. |
-| **Needs dates from its owner** | Assigned and budgeted, but the owner has not proposed dates yet. |
-| **Dates awaiting review** | Dates proposed; the reviewer has not decided, so work cannot start. |
+| **Needs a start date from its owner** | Assigned and budgeted, but the owner has not said when they start. |
 | **N GAPS** | Imported data the source document did not establish. Nothing was guessed — see below. |
 
 ### Gaps
@@ -112,9 +113,8 @@ This is the spine. Every role's section below is a view of the same sequence.
 | 1 | Create the project, workstreams and milestones | Task Assigner | Plan |
 | 2 | Create the task, naming a **reviewer** and an **effort budget** | Task Assigner | Tasks → + New task |
 | 3 | Give the task an owner and a priority | Task Assigner | Tasks (bulk) or the task itself |
-| 4 | Propose start and end dates, and what each day delivers | Owner | Task → Schedule |
-| 5 | Agree the dates, or send them back | Reviewer | Task → Dates awaiting review |
-| 6 | Start work: **Not Started → In Progress** | Owner | Task → Update this task |
+| 4 | Pick a start date; the deadline is calculated. Say what each day delivers | Member | Task → Set the schedule |
+| 5 | Start work: **Not Started → In Progress** | Member | Task → Update this task |
 | 7 | Log what each working day produced | Owner or supporting member | Task → Daily outcomes |
 | 8 | Flag a blocker if work stops | Owner | Task → Update this task |
 | 9 | Apply for review: **In Progress → Review** | Owner | Task → Update this task |
@@ -158,19 +158,20 @@ review, needs an update. Below them:
 If a task is in the "Owes a daily outcome" box, someone will chase you for it. Clear it
 first.
 
-### Step 1 — Agree the dates before you start
+### Step 1 — Say when you start
 
 When a Task Assigner assigns you a task, it arrives with an **effort budget** (for example
-"3 working days") but no agreed dates. The task shows **Needs dates from its owner**.
+"3 working days") but no start date. The task shows **Needs a start date from its owner**.
 
-Open the task and use the **Schedule** panel to propose:
+Open the task and use the **Set the schedule** panel:
 
-- a **start date** and an **end date** that fit the budget, and
-- for a multi-day task, **what each day delivers** — one line per day saying what is
-  finished by the end of it.
+- pick a **start date** — it has to be a working day,
+- adjust **working days** if you need fewer than you were budgeted, and
+- for a multi-day task, say **what each day delivers** — one line per working day.
 
-Submit, and the task moves to **Dates awaiting review**. Your reviewer either agrees them
-(the dates lock and you can start) or sends them back with a note for you to revise.
+The **deadline appears as you type**, counted over working days: three days from a Thursday
+finishes on the Monday, not the Saturday. Submit and the task is scheduled — nobody has to
+agree it, and you can start.
 
 > A task runs for at most **5 working days** by default. If the work genuinely needs
 > longer, it is not a task — ask your Task Assigner to split it.
@@ -226,7 +227,7 @@ On the task, in the **Deadline** panel:
 
 1. Set a **New end date**.
 2. Give a **Reason** — why the agreed date is no longer reachable.
-3. Press **Request deadline change**.
+3. Press **Request more days**.
 
 The request appears on the Task Assigner's dashboard and on the task. While it is pending the
 task shows "Awaiting a Task Assigner decision", and you can only have one pending request per
@@ -241,7 +242,7 @@ Split the remaining work into a new task instead.
 | You want to | Ask |
 | --- | --- |
 | Change the owner, title, description or priority | Your Task Assigner |
-| Move an agreed deadline | Request a deadline change (Task Assigner or reviewer approves) |
+| Get more time | Request more working days (a Task Assigner or your reviewer approves; the deadline moves with the budget) |
 | Change the effort budget, milestone, dependencies or supporting members | Your Task Assigner |
 | Change the reviewer | Your Task Assigner |
 | Mark your own work Completed | Your reviewer |
@@ -252,7 +253,7 @@ Split the remaining work into a new task instead.
 ## 5. If you are a Task Assigner
 
 You own the plan and the structure. You do not own the dates — the people doing the work
-propose those, and reviewers agree them. Your job is to budget the effort, name the
+pick their own start date. Your job is to budget the effort, name the
 accountable people, and act on the exceptions.
 
 ### Step 1 — Build the plan (**Plan** tab)
@@ -335,17 +336,17 @@ The **Dashboard** is your daily driver. It is ordered deliberately:
    priority or no deadline. Until this is empty, exception lists are noise. Clear it next.
 3. **Needs your intervention** — the open tasks carrying exceptions, worst first.
 4. **The exception grid** — Overdue · Due within 2 days · Blocked · No recent update ·
-   **Dates awaiting review** · **Needs dates** · **No daily outcome**. Empty buckets
-   collapse to one line, so a quiet week does not look like a broken page.
-   - *Dates awaiting review* and *Needs dates* are **people waiting**, not work running
-     late. They are the cheapest thing on the page to fix.
+   **Needs a start date** · **No daily outcome**. Empty buckets collapse to one line, so a
+   quiet week does not look like a broken page.
+   - *Needs a start date* is **somebody waiting**, not work running late. It is the
+     cheapest thing on the page to fix.
 5. **Requires clarification** — gaps from imported data. Each count links straight to the
    filtered task list.
 6. **Deadline change requests** — the rest of the pending requests, minus the ones
    already in your own panel above.
 7. **By workstream** and **Team progress** roll-ups. Click any person to open their board.
 
-### Deciding a deadline change
+### Deciding a request for more days
 
 Approve or reject from the dashboard card, or open the task. Approving:
 
@@ -389,7 +390,7 @@ your decisions — not the project's. It has up to three groups:
 - **Dates to agree** — proposals you have to approve or send back. Nothing starts until
   you do, so every row here is somebody who cannot move.
 - **Work to sign off** — tasks submitted for your review.
-- **Extensions to decide** — deadline change requests on tasks you review. Approve or
+- **Extensions to decide** — requests for more working days on tasks you review. Approve or
   reject them in place.
 
 The heading carries the count, and the panel disappears entirely when there is nothing
@@ -409,17 +410,17 @@ filter still available. A **Waiting on me** row offers:
 Click an active lens again to clear it. There is also an **All reviewers** dropdown beside
 **All owners**, so you can look at anyone else's queue — useful for covering a colleague.
 
-### Decision 1 — Agree the dates
+### Decision 1 — More working days
 
-An owner has proposed a start date, an end date, and what each day of the task delivers.
-Open the task; the **Dates awaiting review** panel shows the proposed window.
+A Member has asked for a bigger effort budget. Open the task; the **Effort budget** panel
+shows what they have, what they are asking for, and why.
 
-- **Agree dates** — the schedule locks. The owner can now start, and from here the dates
-  move only through an approved extension.
-- **Send back** — the dates return to draft for the owner to revise. Leave a **Note**
-  saying why; without one, they are guessing at what you wanted.
+- **Approve** — the budget rises and the deadline moves with it. Any working day the change
+  adds will need an outcome, which is raised as a clarification rather than invented.
+- **Reject** — the budget stands. Leave a **Note** saying why; without one, they are
+  guessing at what you wanted.
 
-Ask yourself: does this window fit the effort budget, does it fit around the person's other
+Ask yourself: does this fit around the person's other
 commitments, and does each day's stated outcome actually add up to the task?
 
 ### Decision 2 — Sign the work off
@@ -462,9 +463,9 @@ The refusals are the rules doing their job. The common ones:
 
 | Message | What to do |
 | --- | --- |
-| *"This task has no agreed dates yet. Propose a start and end date first."* | The owner proposes dates; the reviewer agrees them. Then work can start. |
+| *"This task has no start date yet. Set one before starting work."* | The Member picks a start date; the deadline is calculated from the budget. Then work can start. |
 | *"These dates are still with the reviewer. Work starts once they are agreed."* | Chase the reviewer, or ask a Task Assigner to decide. |
-| *"This schedule is agreed and locked. Request a deadline extension to move it."* | Use the Deadline panel. Editing locked dates is not available to anyone, including Task Assigners. |
+| *"This task already has a start date."* | The schedule is set. To change how long it runs, ask for more days in the Effort budget panel. |
 | *"Only this task's reviewer can move it from Review to Completed."* | Ask your reviewer, or a Task Assigner if they are away. |
 | *"This task has no reviewer, so there is nobody to send it to."* | A Task Assigner assigns one, then it can go to review. |
 | *"A blocked task must describe its blocker."* | Fill in the Blocker field. |
@@ -473,10 +474,10 @@ The refusals are the rules doing their job. The common ones:
 | *"The reviewer cannot be the owner."* | Nobody signs off their own work. Pick a different reviewer, or a different owner. In a bulk assignment the clashing tasks are skipped and listed; the rest still go through. |
 | *"A daily outcome can only be logged while a task is in progress or blocked."* | Start the task first, or it is already past the point of daily logging. |
 | *"Only the task owner or a supporting member can log a daily outcome."* | It is a report on work done, not a note about it. Comment instead. |
-| *"Request a deadline change instead — a Task Assigner must approve it."* | You tried to edit the due date directly. |
+| *"Request a deadline change instead — a Task Assigner must approve it."* | You tried to edit the deadline directly. It is calculated, not typed. |
 | *"Only a Task Assigner can reassign a task owner."* | Ask your Task Assigner. |
 | *"These dates are not agreed yet, so there is nothing to extend."* | Propose the dates you need instead of requesting an extension. |
-| *"This task already has a deadline change awaiting a decision."* | Wait for it to be decided; one at a time. |
+| *"This task already has a change awaiting a decision."* | Wait for it to be decided; one at a time. |
 | *"That would make the task N working days; the cap is 5."* | Split the remaining work into a new task. |
 | *"You can only decide requests on tasks you are the reviewer of."* | A Task Assigner can decide it. |
 | *"X still owns N open task(s)."* | Reassign them before deactivating the account. |
@@ -507,7 +508,7 @@ them change the rules — they change where you have to go to apply them.
   currently renders for Task Assigners only; a member owner sees the Deadline panel instead.
   Until this is wired up, a Task Assigner sets the schedule (which agrees it in the same action),
   or the owner proposes dates through the API. Everything downstream — the lock, the
-  extension flow, the "needs dates" and "awaiting review" flags — works as written.
+  the request-for-more-days flow, the "needs a start date" flag — works as written.
 - **A reviewer decides deadline requests from the Dashboard, not from the task.** The
   task's own Deadline panel still shows Approve/Reject to Task Assigners only. Use the
   **Waiting on you** panel, which lists exactly the requests you can decide.

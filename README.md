@@ -222,29 +222,35 @@ against the first commitment therefore stays measurable however many extensions 
 
 ### Task scheduling rules
 
-Dates are not the Task Assigner's to set. The Task Assigner budgets **effort**; the owner proposes the
-days that spend it; the reviewer agrees them. The rules live together in
-`src/domain/task-schedule.ts`, so the service, the API and the forms enforce one definition
-rather than three drifting copies.
+**Nobody types a deadline.** A Task Assigner budgets **effort**; the Member says when they
+start; the deadline is calculated from the two, in working days. The rules live together in
+`src/domain/task-schedule.ts` and `src/lib/dates.ts`, so the service, the API and the forms
+enforce one definition rather than three drifting copies.
 
 1. **A task carries an effort budget, in working days** (`MAX_TASK_EFFORT_DAYS`, default 5).
    Required at creation. Work needing longer is not a task; it is a milestone that has to be
-   broken down. Weekends spend none of a budget, because "three days of effort" means three
-   days worked.
-2. **The owner proposes the dates.** A proposed window may not spend *more* working days than
-   the budget — that is what a budget means. It may spend fewer: finishing three days of work
-   in two is nobody's problem but the owner's. Needing more is what the extension flow is for.
-3. **The reviewer agrees them, and then they lock.** Until they are agreed, work cannot start
-   at all — so an unanswered proposal is somebody sitting idle, which is why
-   `SCHEDULE_AWAITING_REVIEW` outranks a merely stale update on the dashboard. A Task Assigner can
-   agree a schedule too, so an absent reviewer never deadlocks a task.
-4. **Locked dates move only through an approved deadline extension** — including for a Task Assigner,
-   who would otherwise leave no trace. The extension raises `effort_days` to match the new
-   window while `original_effort_days` and `original_due_date` keep the first estimate, so both
-   the current budget and the slippage against the original stay readable.
-5. **Every day of a multi-day task states its outcome.** A two-day task is two checkable
-   outcomes, not one vague block of time — one row per calendar day in `[start_date, due_date]`,
-   stored in `task_day_plans`. A single-day task needs none: the task is its own outcome.
+   broken down.
+2. **The Member picks the start date, and the deadline follows.** It must be a working day.
+   `workingDayDeadline(start, days)` counts forward over Mon–Fri only: one day starting Monday
+   finishes Monday, five finish Friday, and five starting Thursday finish the following
+   Wednesday. Because it is derived, nobody can quietly give themselves a longer window than
+   they were given, and nobody has to count weekend squares in their head.
+3. **The budget is a ceiling, not a quota.** The Member may take fewer days than budgeted —
+   finishing three days of work in two is nobody's problem but theirs. Needing a fourth is what
+   the change request is for.
+4. **No approval stands between a start date and the work.** The budget was agreed when it was
+   set, and the start date is the owner's to choose, so setting it schedules the task outright.
+   What a reviewer still holds is the sign-off on finished work.
+5. **A scheduled task's budget moves only through an approved request** — including for a Task
+   Assigner, who would otherwise leave no trace. The request asks for **days**, not a date;
+   approving it raises `effort_days` and the deadline moves with it, while
+   `original_effort_days` and `original_due_date` keep the first estimate so slippage against
+   it stays readable. A Task Assigner or the task's reviewer decides.
+6. **Every working day of a multi-day task states its outcome.** A two-day task is two
+   checkable outcomes, not one vague block of time — one row per *working* day in
+   `[start_date, due_date]`, stored in `task_day_plans`. Asking what Saturday delivers is
+   asking somebody to invent something. A single-day task needs none: the task is its own
+   outcome.
 
 Day outcomes are deliberately **not** locked with the dates. They say what each agreed day
 delivers rather than when the work happens, and an approved extension leaves new days owing
