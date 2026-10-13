@@ -332,8 +332,9 @@ node, naming what is in the way, rather than cascading and taking a month of tas
 
 Two companion documents:
 [**deploy/README.md**](deploy/README.md) moves the server onto an always-on
-Linux machine; [**deploy/FOR-THE-TEAM.md**](deploy/FOR-THE-TEAM.md) is the page
-to send everyone else, covering Windows, macOS and Linux.
+Linux machine; the pages to send everyone else are
+[**deploy/client-setup-windows.md**](deploy/client-setup-windows.md) and
+[**deploy/client-setup-linux.md**](deploy/client-setup-linux.md).
 
 **1. Encrypt the traffic.** Without TLS every passcode and every session token crosses the
 network as readable text, and a token is the whole account for 12 hours — replayable by anyone
