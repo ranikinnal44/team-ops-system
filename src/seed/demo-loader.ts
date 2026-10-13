@@ -18,7 +18,17 @@ import * as deadlineRepo from '../repositories/deadline.repo.ts';
 import { DEMO_DATA, type DemoDataset, type DemoTask } from './demo-data.ts';
 import { TaskStatus, HistoryKind, STATUS_LABEL, PRIORITY_LABEL, ScheduleState } from '../domain/enums.ts';
 import { formatTaskRef } from '../lib/ids.ts';
-import { todayDate, addDays, formatDateHuman, type IsoTimestamp, workingDaysInclusive } from '../lib/dates.ts';
+import {
+  todayDate,
+  addDays,
+  formatDateHuman,
+  daysBetween,
+  workingDaysInclusive,
+  workingDayDeadline,
+  nextWorkingDay,
+  type IsoDate,
+  type IsoTimestamp,
+} from '../lib/dates.ts';
 import { describeSchedule } from '../domain/task-schedule.ts';
 
 /** An ISO timestamp `days` before now, at a fixed hour, for stable ordering. */
@@ -144,6 +154,27 @@ function synthesiseHistory(
   }
 }
 
+/**
+ * Demo dates land on working days.
+ *
+ * The offsets are plain calendar days from "today", so running the seed on the
+ * wrong weekday used to put a task entirely on a Saturday — a window with no
+ * working days in it, which cannot be worked, budgeted or extended. Nudging
+ * each end forward to the next working day keeps the dataset close to what it
+ * says while making every task a real one.
+ */
+const demoStart = (today: IsoDate, startInDays: number): IsoDate =>
+  nextWorkingDay(addDays(today, startInDays));
+
+const demoDue = (today: IsoDate, startInDays: number, dueInDays: number): IsoDate => {
+  const start = demoStart(today, startInDays);
+  const due = nextWorkingDay(addDays(today, dueInDays));
+  return daysBetween(start, due) < 0 ? start : due;
+};
+
+const demoEffort = (today: IsoDate, startInDays: number, dueInDays: number): number =>
+  workingDaysInclusive(demoStart(today, startInDays), demoDue(today, startInDays, dueInDays)) || 1;
+
 export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
   const today = todayDate();
   const resolved: Resolved = {
@@ -237,22 +268,24 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
         priority: demoTask.priority,
         status: demoTask.status,
         progress: demoTask.progress ?? (demoTask.status === TaskStatus.Completed ? 100 : 0),
-        startDate: addDays(today, demoTask.startInDays),
-        dueDate: addDays(today, demoTask.dueInDays),
-        // Demo tasks arrive with their dates already agreed, so the dataset
-        // exercises working tasks rather than a backlog of schedule approvals.
-        effortDays:
-          workingDaysInclusive(
-            addDays(today, demoTask.startInDays),
-            addDays(today, demoTask.dueInDays),
-          ) || 1,
+        // Snapped to working days. Counting plain calendar days from "today"
+        // puts a task on a Saturday whenever the seed is run on the wrong
+        // weekday, and a task with no working days in it cannot be worked,
+        // extended, or honestly budgeted.
+        startDate: demoStart(today, demoTask.startInDays),
+        dueDate: demoDue(today, demoTask.startInDays, demoTask.dueInDays),
+        // Demo tasks arrive already scheduled, so the dataset exercises
+        // working tasks rather than a backlog of unscheduled ones.
+        effortDays: demoEffort(today, demoTask.startInDays, demoTask.dueInDays),
         scheduleState: ScheduleState.Locked,
         nextAction: demoTask.nextAction ?? null,
         createdById: managerId,
         supportingMemberIds: (demoTask.supportKeys ?? []).map(requireUser),
         dependencyTaskIds: [],
         dayPlans: (demoTask.dayOutcomes ?? []).map((outcome, i) => ({
-          date: addDays(today, demoTask.startInDays + i),
+          // The i-th working day from the start, so an outcome always has a
+          // day to belong to even if the window is shorter than the list.
+          date: workingDayDeadline(demoStart(today, demoTask.startInDays), i + 1),
           outcome,
         })),
       });
@@ -314,13 +347,14 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
       if (!taskId) throw new Error(`Demo data references unknown task key "${request.taskKey}"`);
       const task = taskRepo.findTaskById(db, taskId);
       if (!task || task.dueDate === null) continue;
-      const currentDueDate = task.dueDate;
       const createdAt = atDaysAgo(request.daysAgo, 11, 0);
+      // The demo asks for one more working day than the task is budgeted.
+      const currentEffortDays = task.effortDays ?? 1;
       deadlineRepo.insertDeadlineRequest(db, {
         taskId,
         requestedById: requireUser(request.requestedByKey),
-        currentDueDate,
-        requestedDueDate: addDays(today, request.requestedDueInDays),
+        currentEffortDays,
+        requestedEffortDays: currentEffortDays + 1,
         reason: request.reason,
         createdAt,
       });
@@ -328,9 +362,9 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
         taskId,
         actorId: requireUser(request.requestedByKey),
         kind: HistoryKind.DeadlineChangeRequested,
-        field: 'dueDate',
-        fromValue: formatDateHuman(currentDueDate),
-        toValue: formatDateHuman(addDays(today, request.requestedDueInDays)),
+        field: 'effortDays',
+        fromValue: `${currentEffortDays} working days`,
+        toValue: `${currentEffortDays + 1} working days`,
         note: request.reason,
         createdAt,
       });
