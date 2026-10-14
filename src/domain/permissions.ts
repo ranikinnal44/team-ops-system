@@ -58,16 +58,22 @@ const MANAGER_CAPABILITIES: readonly Capability[] = [
 const EMPLOYEE_CAPABILITIES: readonly Capability[] = [Capability.RequestDeadlineChange];
 
 /**
- * A reviewer decides, they do not plan: no creating structure or tasks, no
- * reassignment, no team management. They see every task because they cannot
- * review what they cannot find, and they may own work of their own, which is
- * why they keep the right to ask for an extension like anyone else.
+ * A reviewer decides, and may also hand work out: they can create tasks and
+ * assign them (owner, reviewer, supporters, priority), singly or in bulk. What
+ * they cannot do is shape the plan itself — no workstreams or milestones — or
+ * manage the team, or touch the dates, effort and content of a task. They see
+ * every task because they cannot review what they cannot find, and they may
+ * own work of their own, which is why they keep the right to ask for an
+ * extension like anyone else.
  */
 const REVIEWER_CAPABILITIES: readonly Capability[] = [
   Capability.ViewAllTasks,
   Capability.ViewTeamProgress,
   Capability.DecideDeadlineRequest,
   Capability.RequestDeadlineChange,
+  Capability.CreateTask,
+  Capability.ReassignTask,
+  Capability.BulkAssignTasks,
 ];
 
 export const CAPABILITIES_BY_ROLE: Record<Role, readonly Capability[]> = {
@@ -126,12 +132,25 @@ export const MANAGER_WRITABLE_TASK_FIELDS = [
 
 export type TaskField = (typeof MANAGER_WRITABLE_TASK_FIELDS)[number];
 
+/**
+ * The fields that amount to "who does this, and how urgent" — what somebody
+ * who may assign tasks (a Task Assigner or a reviewer) can change on a task
+ * they are otherwise not part of.
+ */
+export const ASSIGNMENT_TASK_FIELDS: readonly TaskField[] = [
+  'ownerId',
+  'reviewerId',
+  'supportingMemberIds',
+  'priority',
+];
+
 export const WRITABLE_TASK_FIELDS_BY_ROLE: Record<Role, readonly TaskField[]> = {
   [Role.Manager]: MANAGER_WRITABLE_TASK_FIELDS,
-  // A reviewer writes no more than a member does. Their authority is
-  // exercised through the decisions — schedule, review, extension — not by
-  // editing the task underneath whoever owns it.
-  [Role.Reviewer]: EMPLOYEE_WRITABLE_TASK_FIELDS,
+  // A reviewer writes what a member does, plus the assignment fields. Dates,
+  // effort and content stay with the Task Assigner: their authority over the
+  // schedule is exercised through the decisions — schedule, review,
+  // extension — not by editing the task underneath whoever owns it.
+  [Role.Reviewer]: [...EMPLOYEE_WRITABLE_TASK_FIELDS, ...ASSIGNMENT_TASK_FIELDS],
   [Role.Employee]: EMPLOYEE_WRITABLE_TASK_FIELDS,
 };
 
@@ -186,14 +205,31 @@ export function assertCanViewTask(role: Role, task: TaskParticipants, userId: st
 /**
  * Updating is narrower than viewing: a supporting member or reviewer can see a
  * task, but only the owner (or a Task Assigner) drives its status and progress.
+ *
+ * Anybody who may assign tasks can also make an assignment-only change to a
+ * task they are not part of — that is what assigning is — but nothing else on it.
  */
-export const canUpdateTask = (role: Role, task: TaskParticipants, userId: string): boolean =>
+export const canUpdateTask = (
+  role: Role,
+  task: TaskParticipants,
+  userId: string,
+  touchedFields?: readonly string[],
+): boolean =>
   role === Role.Manager ||
   (task.ownerId !== null && task.ownerId === userId) ||
-  (task.reviewerId !== null && task.reviewerId === userId);
+  (task.reviewerId !== null && task.reviewerId === userId) ||
+  (can(role, Capability.ReassignTask) &&
+    touchedFields !== undefined &&
+    touchedFields.length > 0 &&
+    touchedFields.every((f) => (ASSIGNMENT_TASK_FIELDS as readonly string[]).includes(f)));
 
-export function assertCanUpdateTask(role: Role, task: TaskParticipants, userId: string): void {
-  if (!canUpdateTask(role, task, userId)) {
+export function assertCanUpdateTask(
+  role: Role,
+  task: TaskParticipants,
+  userId: string,
+  touchedFields?: readonly string[],
+): void {
+  if (!canUpdateTask(role, task, userId, touchedFields)) {
     throw forbidden('Only the task owner, its reviewer or a Task Assigner can update this task.');
   }
 }

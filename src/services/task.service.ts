@@ -469,9 +469,8 @@ export function updateTask(
 ): TaskView {
   const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
   if (!task) throw notFound('Task');
-  assertCanUpdateTask(actor.role, task, actor.id);
-
   const { comment, expectedLastUpdatedAt, ...fields } = input;
+  assertCanUpdateTask(actor.role, task, actor.id, Object.keys(fields));
 
   // Two people with the same task open: without this the second save silently
   // erases the first, and nobody finds out until somebody asks where their

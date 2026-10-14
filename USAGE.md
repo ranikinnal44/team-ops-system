@@ -71,9 +71,9 @@ builds the plan and adds everyone else.
 | **Team** — the roster | edit | read | read |
 | **Activity** — what changed recently | yes | yes | yes |
 
-A reviewer sees the whole board on purpose: you cannot review what you cannot find. Seeing
-everything is not the same as being able to change it — a reviewer edits no more of a task
-than a member does.
+A reviewer sees the whole board on purpose: you cannot review what you cannot find. A reviewer
+can also create tasks and assign them — owner, reviewer, supporting members and priority, one at
+a time or in bulk — but does not reschedule or rewrite a task, shape the plan, or manage the team.
 
 ### Reading a task
 
@@ -111,8 +111,8 @@ This is the spine. Every role's section below is a view of the same sequence.
 | # | Step | Who does it | Where |
 | --- | --- | --- | --- |
 | 1 | Create the project, workstreams and milestones | Task Assigner | Plan |
-| 2 | Create the task, naming a **reviewer** and an **effort budget** | Task Assigner | Tasks → + New task |
-| 3 | Give the task an owner and a priority | Task Assigner | Tasks (bulk) or the task itself |
+| 2 | Create the task, naming a **reviewer** and an **effort budget** | Task Assigner or Reviewer | Tasks → + New task |
+| 3 | Give the task an owner and a priority | Task Assigner or Reviewer | Tasks (bulk) or the task itself |
 | 4 | Pick a start date; the deadline is calculated | Member | Task → Set the schedule |
 | 5 | Start work: **Not Started → In Progress** | Member | Task → Update this task |
 | 7 | Log what each working day produced | Owner or supporting member | Task → Daily outcomes |
@@ -376,8 +376,9 @@ decided it.
 
 ## 6. If you are a reviewer
 
-You confirm what other people commit to. You do not plan the work and you do not do it —
-your authority is exercised through three decisions, on the tasks you are named on.
+You confirm what other people commit to. You do not plan the project or do the work, but you
+can create tasks and assign them to people. Your sign-off authority is exercised through three
+decisions, on the tasks you are named on.
 
 You can see every task in the system, because you cannot review what you cannot find. You
 can edit no more of a task than a member can.

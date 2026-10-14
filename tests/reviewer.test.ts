@@ -223,17 +223,28 @@ describe('the reviewer role', () => {
     assert.equal(tasks.getTask(db, manager(db), task.id).dueDate, task.dueDate);
   });
 
-  test('cannot create the work it reviews', () => {
+  test('can create a task and hand it to somebody', () => {
+    const created = tasks.createTask(db, reviewer, {
+      ...placement(db),
+      title: 'Something the reviewer set up',
+      effortDays: 1,
+      ownerId: employee1(db).id,
+      reviewerId: employee2(db).id,
+    } as Parameters<typeof tasks.createTask>[2]);
+    assert.equal(created.ownerId, employee1(db).id);
+  });
+
+  test('cannot, however, be both the owner and the reviewer of what they create', () => {
     assert.throws(
       () =>
         tasks.createTask(db, reviewer, {
           ...placement(db),
-          title: 'Something I made up',
+          title: 'Marking my own homework',
           effortDays: 1,
-          ownerId: employee1(db).id,
-          reviewerId: employee2(db).id,
+          ownerId: reviewer.id,
+          reviewerId: reviewer.id,
         } as Parameters<typeof tasks.createTask>[2]),
-      (e: { code?: string }) => e.code === ErrorCode.FORBIDDEN,
+      (e: { code?: string }) => e.code === ErrorCode.VALIDATION,
     );
   });
 });

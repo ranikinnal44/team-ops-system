@@ -66,6 +66,9 @@ export async function taskDetailView(mount, params, taskId) {
   const maxEffortDays = rules.maxTaskEffortDays;
   const me = session.user;
   const isManager = me?.role === 'manager';
+  // A reviewer may assign (owner, supporters, priority) on any task, but does
+  // not reschedule or restructure it.
+  const canAssign = isManager || me?.role === 'reviewer';
   const canDrive = isManager || task.ownerId === me?.id || task.reviewerId === me?.id;
   const isOwner = task.ownerId === me?.id;
   const isReviewer = task.reviewerId === me?.id;
@@ -105,13 +108,14 @@ export async function taskDetailView(mount, params, taskId) {
       edit: 'Change owner',
 
       managerOnly: true,
+      assign: true,
       action: 'Assign an owner',
       done: 'Owner assigned',
       build: async () =>
         select(
           [
             { value: '', label: '— choose a person —' },
-            ...(await loadUsers()).map((u) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+            ...(await loadUsers()).map((u) => ({ value: u.id, label: u.role ? `${u.name} (${u.role})` : u.name })),
           ],
           task.ownerId ?? '',
         ),
@@ -121,6 +125,7 @@ export async function taskDetailView(mount, params, taskId) {
       edit: 'Change priority',
 
       managerOnly: true,
+      assign: true,
       action: 'Set a priority',
       done: 'Priority set',
       build: () =>
@@ -175,6 +180,7 @@ export async function taskDetailView(mount, params, taskId) {
       edit: 'Change who is supporting',
 
       managerOnly: true,
+      assign: true,
       action: 'Confirm who is supporting',
       done: 'Supporting members confirmed',
       build: async () => {
@@ -290,7 +296,7 @@ export async function taskDetailView(mount, params, taskId) {
     const spec = FIELD_EDITOR[fieldName];
     if (!spec) return null;
     if (mode === 'edit' && spec.gapOnly) return null;
-    if (!(spec.managerOnly ? isManager : canDrive)) return null;
+    if (!(spec.managerOnly ? isManager || (spec.assign && canAssign) : canDrive)) return null;
     const openLabel = mode === 'edit' ? (spec.edit ?? 'Change') : spec.action;
 
     const slot = el('div', { class: 'gap-fix' });

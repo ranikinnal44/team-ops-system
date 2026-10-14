@@ -1,7 +1,7 @@
 import type { Route } from '../http.ts';
 import * as projects from '../../services/project.service.ts';
 import * as userRepo from '../../repositories/user.repo.ts';
-import { Capability } from '../../domain/permissions.ts';
+import { Capability, assertCan, can } from '../../domain/permissions.ts';
 import {
   object, str, optional, nullable, isoDate, bool, arrayOf, parseOrThrow,
 } from '../../lib/validate.ts';
@@ -77,10 +77,19 @@ export const projectRoutes: Route[] = [
     // Names and roles of everyone, which is the roster by another route.
     // Guarded the same way, or the Team screen's restriction would be a
     // matter of which URL somebody typed.
+    //
+    // Somebody who may assign tasks needs names to pick from, but not the
+    // roster's emails and roles, so they get ids and names and nothing else.
     method: 'GET',
     path: '/api/users',
-    capability: Capability.ViewTeam,
-    handler: ({ db }) => userRepo.listUsers(db, { activeOnly: true }),
+    handler: ({ db, actor }) => {
+      if (can(actor.role, Capability.ViewTeam)) return userRepo.listUsers(db, { activeOnly: true });
+      if (can(actor.role, Capability.CreateTask) || can(actor.role, Capability.ReassignTask)) {
+        return userRepo.listUsers(db, { activeOnly: true }).map((u) => ({ id: u.id, name: u.name }));
+      }
+      assertCan(actor.role, Capability.ViewTeam);
+      return [];
+    },
   },
   {
     method: 'GET',

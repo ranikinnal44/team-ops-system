@@ -569,24 +569,52 @@ describe('what each role can reach', () => {
     );
   });
 
-  const managerOnly: [string, string, unknown][] = [
+  // Creating and assigning tasks belongs to a manager and a reviewer; an
+  // employee is refused. Shaping the plan and the team is the manager's alone.
+  const assignment: [string, string, unknown][] = [
     ['POST', '/api/tasks', { workstreamId: 'x', title: 'x', reviewerId: 'x', effortDays: 1 }],
-    ['POST', '/api/projects', { name: 'Shadow project' }],
-    ['POST', '/api/team', { name: 'X', email: 'x@y.z', role: 'employee', passcode: 'abcdef' }],
     ['POST', '/api/tasks/bulk-assign', { taskIds: ['x'], ownerId: 'y' }],
   ];
+  const managerOnly: [string, string, unknown][] = [
+    ['POST', '/api/projects', { name: 'Shadow project' }],
+    ['POST', '/api/team', { name: 'X', email: 'x@y.z', role: 'employee', passcode: 'abcdef' }],
+  ];
 
-  for (const [method, path, body] of managerOnly) {
+  for (const [method, path, body] of [...assignment, ...managerOnly]) {
     test(`an employee is refused ${method} ${path}`, async () => {
       const refused = await cast.server.request(method, path, { token: cast.owner, body });
       assert.equal(refused.status, 403, JSON.stringify(refused.body));
     });
+  }
 
-    test(`a reviewer is refused ${method} ${path} — they decide, they do not plan`, async () => {
+  for (const [method, path, body] of managerOnly) {
+    test(`a reviewer is refused ${method} ${path} — they do not shape the plan or the team`, async () => {
       const refused = await cast.server.request(method, path, { token: cast.reviewer, body });
       assert.equal(refused.status, 403, JSON.stringify(refused.body));
     });
   }
+
+  for (const [method, path, body] of assignment) {
+    test(`a reviewer is not refused ${method} ${path} on role grounds`, async () => {
+      // The body is deliberately invalid: what is checked is that the answer
+      // is a validation or lookup failure, never a 403 for the role.
+      const answer = await cast.server.request(method, path, { token: cast.reviewer, body });
+      assert.notEqual(answer.status, 403, JSON.stringify(answer.body));
+    });
+  }
+
+  test('the people picker gives a reviewer names only, and a manager the roster', async () => {
+    const asReviewer = await cast.server.request('GET', '/api/users', { token: cast.reviewer });
+    assert.equal(asReviewer.status, 200);
+    assert.ok(asReviewer.body.length > 0);
+    for (const person of asReviewer.body) {
+      assert.deepEqual(Object.keys(person).sort(), ['id', 'name'], 'no email, no role');
+    }
+    const asManager = await cast.server.request('GET', '/api/users', { token: cast.manager });
+    assert.ok('email' in asManager.body[0] && 'role' in asManager.body[0]);
+    const asEmployee = await cast.server.request('GET', '/api/users', { token: cast.owner });
+    assert.equal(asEmployee.status, 403);
+  });
 
   test('the team dashboard is open to the reviewer and closed to the employee', async () => {
     const asReviewer = await cast.server.request('GET', '/api/dashboard/manager', { token: cast.reviewer });
@@ -596,16 +624,21 @@ describe('what each role can reach', () => {
     assert.equal(asEmployee.status, 403);
   });
 
-  test('a reviewer writes no more of a task than an employee does', async () => {
+  test('a reviewer may assign a task but not reschedule or rewrite it', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner });
-    for (const field of ['title', 'priority', 'effortDays', 'ownerId'] as const) {
-      const value = field === 'effortDays' ? 2 : field === 'priority' ? 'P0' : 'x';
+    for (const field of ['title', 'effortDays', 'dueDate', 'startDate', 'description'] as const) {
+      const value = field === 'effortDays' ? 2 : field === 'dueDate' || field === 'startDate' ? '2030-01-07' : 'x';
       const refused = await cast.server.request('PATCH', `/api/tasks/${id}`, {
         token: cast.reviewer,
         body: { [field]: value },
       });
       assert.equal(refused.status, 403, `a reviewer should not be able to write ${field}`);
     }
+    const assigned = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+      token: cast.reviewer,
+      body: { priority: 'P0' },
+    });
+    assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
   });
 
   test('a mixed payload is refused as a whole, not partly applied', async () => {

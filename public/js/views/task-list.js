@@ -99,6 +99,8 @@ export async function taskListView(mount, params) {
   const isManager = session.user?.role === 'manager';
   // A reviewer is handed the whole board, so they get the same lenses onto it.
   const seesAll = isManager || session.user?.role === 'reviewer';
+  // Creating and assigning tasks belongs to a Task Assigner and to a reviewer.
+  const canAssign = seesAll;
 
   const filters = {
     search: params.get('search') ?? '',
@@ -123,7 +125,7 @@ export async function taskListView(mount, params) {
 
   const [workstreams, users] = await Promise.all([
     api.workstreams().catch(() => []),
-    isManager ? api.users().catch(() => []) : Promise.resolve([]),
+    canAssign ? api.users().catch(() => []) : Promise.resolve([]),
   ]);
 
   const search = el('input', {
@@ -174,10 +176,10 @@ export async function taskListView(mount, params) {
   });
 
   const refine = [statusSel, prioritySel, exceptionSel, gapSel, workstreamSel];
-  // Picking a person by name needs the roster, which is Task-Assigner-only. A
-  // reviewer still reaches their own queue through the lenses below, which
-  // ask for nobody but the signed-in user.
-  if (isManager) {
+  // Picking a person by name needs the list of people, which only somebody who
+  // can assign work is given. A member reaches their own queue through the
+  // lenses below, which ask for nobody but the signed-in user.
+  if (canAssign) {
     const ownerSel = select(
       [{ value: '', label: 'All owners' }, ...users.map((u) => ({ value: u.id, label: u.name }))],
       filters.ownerId,
@@ -277,7 +279,7 @@ export async function taskListView(mount, params) {
     pageHead(
       'Tasks',
       isManager ? 'Every task across the project' : 'Tasks you own, support or review',
-      isManager ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }) : null,
+      canAssign ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }) : null,
     ),
     filterbar,
     results,
@@ -296,9 +298,9 @@ export async function taskListView(mount, params) {
   // when every row would show the same name.
   /* --- bulk assignment ---------------------------------------------------
      Twenty-eight tasks assigned one at a time is twenty-eight page loads,
-     which is the reason the plan sat unassigned. Task Assigners get tick boxes and
-     an action bar; members never see either. */
-  const selection = isManager ? new Set() : undefined;
+     which is the reason the plan sat unassigned. Task Assigners and reviewers get
+     tick boxes and an action bar; members never see either. */
+  const selection = canAssign ? new Set() : undefined;
   let bulkBar = null;
   /** taskId -> the row and tick box built for it, so repainting needs no lookup. */
   const nodes = new Map();

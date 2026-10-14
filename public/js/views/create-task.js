@@ -1,4 +1,4 @@
-/** Screen 6 — Create task. Task Assigner only. */
+/** Screen 6 — Create task. Task Assigners and reviewers. */
 import { api, session } from '../api.js';
 import {
   el,
@@ -14,10 +14,10 @@ import {
 } from '../ui.js';
 
 export async function createTaskView(mount) {
-  if (session.user?.role !== 'manager') {
+  if (session.user?.role !== 'manager' && session.user?.role !== 'reviewer') {
     mount.replaceChildren(
-      pageHead('Create task', 'Task Assigners only'),
-      card(null, el('div', { class: 'muted', text: 'Only a Task Assigner can create tasks. Ask your Task Assigner to add it.' })),
+      pageHead('Create task', 'Task Assigners and reviewers only'),
+      card(null, el('div', { class: 'muted', text: 'Only a Task Assigner or a reviewer can create tasks. Ask one of them to add it.' })),
     );
     return;
   }
@@ -42,7 +42,7 @@ export async function createTaskView(mount) {
   // work is handed to anyone, and the Tasks screen assigns in bulk later.
   const ownerSel = select([
     { value: '', label: '— not assigned yet —' },
-    ...users.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+    ...users.map((u) => ({ value: u.id, label: u.role ? `${u.name} (${u.role})` : u.name })),
   ]);
   const reviewerSel = select([{ value: '', label: '— none —' }, ...users.map((u) => ({ value: u.id, label: u.name }))]);
   // "Not assigned" is a real, first-class choice rather than a hidden default.

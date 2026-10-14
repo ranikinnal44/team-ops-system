@@ -525,7 +525,8 @@ reviewer confirms what people commit to, a member does it.
 - *Task Assigner*: create projects, workstreams, milestones, deliverables and tasks; assign owners;
   set priorities and effort budgets; reassign; change status; view all tasks; view overdue,
   blocked, stale and upcoming; review team-level progress; decide deadline requests.
-- *Reviewer*: confirm the dates an owner proposes, sign off work submitted for review, and
+- *Reviewer*: create tasks and assign them (owner, reviewer, supporting members, priority —
+  singly or in bulk), confirm the dates an owner proposes, sign off work submitted for review, and
   decide deadline-change requests — **on the tasks they are named the reviewer of, and only
   those**. The authority follows the accountability: one named person answers for each task's
   review. They read the whole board, including the team's load, because they cannot confirm
@@ -533,8 +534,10 @@ reviewer confirms what people commit to, a member does it.
 - *Member*: see only tasks they own, support or review; today / upcoming / overdue / blocked /
   awaiting review / recently completed; update status, progress, blocker, next action, comments
   and evidence links; propose their dates; request a deadline change; mark ready for review.
-- A reviewer writes no more of a task than a member does, and **cannot** create projects,
-  workstreams, milestones or tasks, reassign work, bulk-assign or manage the team.
+- A reviewer writes what a member does plus the assignment fields (owner, reviewer, supporting
+  members, priority), and **cannot** create projects, workstreams or milestones, change a task's
+  dates, effort, title or description, or manage the team. For the people picker they are served
+  names only, never the roster's emails and roles.
 - Members **cannot** change owner, project, milestone, priority or the effort budget. The
   attempt is refused with a message pointing at the deadline-request flow.
 

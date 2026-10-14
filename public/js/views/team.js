@@ -77,7 +77,7 @@ export async function teamView(mount) {
       errors,
       el('div', { class: 'grid-2' }, field('Name', name), field('Email', email, 'Used to sign in. Must be unique.')),
       el('div', { class: 'grid-2' },
-        field('Role', role, 'Task Assigners plan the work; reviewers confirm dates and sign off what is done.'),
+        field('Role', role, 'Task Assigners plan the work; reviewers can also create and assign tasks, confirm dates and sign off what is done.'),
         field('Designation', title, 'Optional — what they do on the team.')),
       field('Passcode', passcode,
         'Theirs alone, and how they sign in. Tell it to them — nobody can read it back afterwards, ' +

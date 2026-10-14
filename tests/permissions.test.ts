@@ -21,20 +21,17 @@ const task = {
 };
 
 describe('capabilities', () => {
-  // Planning the work: only a manager shapes the plan or decides who does what.
+  // Shaping the plan and the team: only a manager.
   const managerOnly = [
     Capability.CreateProject,
     Capability.CreateMilestone,
-    Capability.CreateTask,
-    Capability.ReassignTask,
     Capability.ManageTeam,
-    Capability.BulkAssignTasks,
   ];
 
   for (const capability of managerOnly) {
     test(`${capability} is manager-only`, () => {
       assert.ok(can(Role.Manager, capability));
-      assert.ok(!can(Role.Reviewer, capability), 'a reviewer decides, it does not plan');
+      assert.ok(!can(Role.Reviewer, capability), 'a reviewer does not shape the plan or the team');
       assert.ok(!can(Role.Employee, capability));
       assert.throws(
         () => assertCan(Role.Employee, capability),
@@ -44,11 +41,15 @@ describe('capabilities', () => {
   }
 
   // Judging the work: a reviewer needs the same reach as a manager, because
-  // they cannot confirm what they cannot see.
+  // they cannot confirm what they cannot see. And handing work out: creating
+  // tasks and assigning them, singly or in bulk.
   const managerAndReviewer = [
     Capability.ViewAllTasks,
     Capability.ViewTeamProgress,
     Capability.DecideDeadlineRequest,
+    Capability.CreateTask,
+    Capability.ReassignTask,
+    Capability.BulkAssignTasks,
   ];
 
   for (const capability of managerAndReviewer) {
@@ -67,15 +68,25 @@ describe('capabilities', () => {
     assert.ok(can(Role.Reviewer, Capability.RequestDeadlineChange));
   });
 
-  test('a reviewer writes no more of a task than an employee does', () => {
-    // Their authority is the decisions, not editing the work underneath
-    // whoever owns it.
-    for (const field of ['ownerId', 'priority', 'dueDate', 'effortDays', 'title'] as const) {
+  test('a reviewer may assign a task, but not reschedule or rewrite it', () => {
+    for (const field of ['ownerId', 'reviewerId', 'supportingMemberIds', 'priority'] as const) {
+      assert.ok(canWriteTaskField(Role.Reviewer, field), `${field} is part of assigning`);
+    }
+    for (const field of ['dueDate', 'startDate', 'effortDays', 'title', 'description', 'milestoneId'] as const) {
       assert.ok(!canWriteTaskField(Role.Reviewer, field), `${field} is not a reviewer's to set`);
     }
     for (const field of ['status', 'progress', 'blocker'] as const) {
       assert.ok(canWriteTaskField(Role.Reviewer, field));
     }
+  });
+
+  test('assigning reaches a task the reviewer is not part of, and nothing else on it does', () => {
+    const stranger = 'someone-else';
+    assert.ok(canUpdateTask(Role.Reviewer, task, stranger, ['ownerId', 'priority']));
+    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger, ['ownerId', 'status']), 'a mixed payload is refused');
+    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger, ['status']));
+    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger), 'with no fields named, nothing is granted');
+    assert.ok(!canUpdateTask(Role.Employee, task, stranger, ['ownerId']), 'a member cannot assign');
   });
 });
 

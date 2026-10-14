@@ -951,9 +951,18 @@ describe('views render against real AutoDock data', () => {
     session.save(session.token, { ...session.user, role: 'reviewer' });
     const asReviewer = mount();
     await views.manager.managerView(asReviewer);
+    assert.match(
+      asReviewer.text(),
+      /\+ New task/,
+      'a reviewer can create and assign tasks, so the button is theirs too',
+    );
+
+    session.save(session.token, { ...session.user, role: 'employee' });
+    const asEmployee = mount();
+    await views.manager.managerView(asEmployee);
     assert.ok(
-      !asReviewer.text().includes('+ New task'),
-      'a reviewer cannot create tasks, so the button would only bounce them',
+      !asEmployee.text().includes('+ New task'),
+      'a member cannot create tasks, so the button would only bounce them',
     );
   });
 

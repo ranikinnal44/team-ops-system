@@ -325,7 +325,9 @@ export async function managerView(mount) {
       `What is happening, what is late, what is blocked — as of ${formatDate(board.generatedFor)}`,
       // Creating work is a manager's. Offered to a reviewer it was a button
       // that bounced them to their own queue.
-      isManager ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }) : null,
+      isManager || session.user?.role === 'reviewer'
+        ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' })
+        : null,
     ),
     summary,
     el('div', { style: 'height:16px' }),
