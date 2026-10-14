@@ -16,20 +16,10 @@ import {
   parseOrThrow,
 } from '../../lib/validate.ts';
 import { TASK_STATUSES, PRIORITIES, type TaskStatus, type Priority } from '../../domain/enums.ts';
-import { MAX_DAY_OUTCOME_LENGTH } from '../../domain/task-schedule.ts';
 import { MAX_DAY_LOG_OUTCOME_LENGTH } from '../../services/task.service.ts';
 import { TRANSITIONS } from '../../domain/status-machine.ts';
 import { config } from '../../config/index.ts';
 import { Capability } from '../../domain/permissions.ts';
-
-/**
- * One calendar day of a multi-day task and what it is meant to produce. The
- * service checks the dates against the task's own range; this only checks shape.
- */
-const dayPlanSchema = object({
-  date: isoDate(),
-  outcome: str({ max: MAX_DAY_OUTCOME_LENGTH }),
-});
 
 /**
  * A day's reported outcome. `logDate` defaults to today in the service; the
@@ -47,7 +37,6 @@ const proposeScheduleSchema = object({
   // Optional: the owner takes the whole budget unless they say otherwise.
   // A due date is never accepted — it is derived from this and the budget.
   effortDays: optional(int({ min: 1, max: 365 })),
-  dayPlans: optional(arrayOf(dayPlanSchema)),
 });
 
 const createSchema = object({
@@ -73,8 +62,6 @@ const createSchema = object({
   startDate: optional(isoDate()),
   /** Working days the task will take. Defaults to the effort budget. */
   scheduledDays: optional(int({ min: 1, max: 365 })),
-  // Required by the service once the task covers more than one day.
-  dayPlans: optional(arrayOf(dayPlanSchema, { max: 31 })),
   dependencyTaskIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),
   nextAction: optional(nullable(str({ max: 500 }))),
 });
@@ -98,7 +85,6 @@ const updateSchema = object({
   // chased, and that holds for the whole of its life, not just its creation.
   startDate: optional(isoDate()),
   dueDate: optional(isoDate()),
-  dayPlans: optional(arrayOf(dayPlanSchema, { max: 31 })),
   milestoneId: optional(nullable(str({ max: 64 }))),
   deliverableId: optional(nullable(str({ max: 64 }))),
   dependencyTaskIds: optional(arrayOf(str({ max: 64 }), { max: 20 })),

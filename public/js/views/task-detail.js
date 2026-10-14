@@ -4,7 +4,7 @@ import {
   el, card, field, select, statusBadge, priorityTag, flagTag, progressBar, unassignedTag,
   formatDate, formatDateTime, relativeDays, pageHead, errorBox, toast, addDays, STATUS_LABEL,
   clarificationLabel, clarificationField, factId, daysInRange, todayIso,
-  nextWorkingIso, workingDaysFrom,
+  nextWorkingIso, workingDaysFrom, roleLabel,
 } from '../ui.js';
 
 const HISTORY_TEXT = {
@@ -40,57 +40,20 @@ function historyLine(entry) {
   );
 }
 
+
 /**
- * The day-by-day outcomes, or an honest statement of why there are none.
+ * How settled a task's schedule is, in words.
  *
- * A one-day task has nothing to break down. A multi-day task that is missing
- * outcomes says so here rather than rendering an empty list, because the
- * clarification raised against it points at this row.
- *
- * Imported work routinely spans weeks — longer than anything this system will
- * accept — and listing forty empty days would be noise, not information. Those
- * say what they are and leave it there.
+ * Only two states survive: either the owner has said when they start, or they
+ * have not. Nobody agrees a schedule any more, so there is no middle.
  */
 const SCHEDULE_LABEL = {
-  unset: 'Not set — the owner proposes them',
-  proposed: 'Awaiting review',
-  locked: 'Agreed and locked',
+  unset: 'No start date yet — the owner picks one',
+  locked: 'Scheduled',
 };
 
 function scheduleLabel(task) {
   return SCHEDULE_LABEL[task.scheduleState] ?? task.scheduleState;
-}
-
-function dayPlanList(task, maxEffortDays) {
-  const days = daysInRange(task.startDate, task.dueDate);
-  if (days.length === 0) return el('span', { class: 'muted', text: 'No dates set.' });
-  if (days.length === 1) {
-    return el('span', { class: 'muted', text: 'Single-day task — the task itself is the outcome.' });
-  }
-  if (days.length > maxEffortDays && (task.dayPlans ?? []).length === 0) {
-    return el('span', {
-      class: 'muted',
-      text:
-        `Runs ${days.length} days — longer than the ${maxEffortDays}-day limit for work added ` +
-        'here, so it carries no day-by-day plan. Break it up to plan it day by day.',
-    });
-  }
-
-  const byDate = new Map((task.dayPlans ?? []).map((p) => [p.date, p.outcome]));
-  return el(
-    'ol',
-    { class: 'day-plan-facts' },
-    days.map((day, index) =>
-      el(
-        'li',
-        {},
-        el('span', { class: 'day-plan-label', text: `Day ${index + 1} · ${formatDate(day)}` }),
-        byDate.has(day)
-          ? el('span', { text: byDate.get(day) })
-          : el('span', { class: 'muted', text: 'No outcome defined yet.' }),
-      ),
-    ),
-  );
 }
 
 export async function taskDetailView(mount, params, taskId) {
@@ -127,6 +90,8 @@ export async function taskDetailView(mount, params, taskId) {
   // than on every task view.
   let usersPromise = null;
   const loadUsers = () => (usersPromise ??= api.users());
+  let tasksPromise = null;
+  const loadTasks = () => (tasksPromise ??= api.tasks({}));
   let milestonesPromise = null;
   const loadMilestones = () => (milestonesPromise ??= api.milestones(task.workstreamId));
 
@@ -135,8 +100,10 @@ export async function taskDetailView(mount, params, taskId) {
    * patch to send. `updateTask` closes the clarification itself once the value
    * lands, so there is no separate "mark as resolved" step to remember.
    */
-  const GAP_FIELD = {
+  const FIELD_EDITOR = {
     Owner: {
+      edit: 'Change owner',
+
       managerOnly: true,
       action: 'Assign an owner',
       done: 'Owner assigned',
@@ -151,6 +118,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => (node.value ? { ownerId: node.value } : null),
     },
     Priority: {
+      edit: 'Change priority',
+
       managerOnly: true,
       action: 'Set a priority',
       done: 'Priority set',
@@ -168,6 +137,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => (node.value ? { priority: node.value } : null),
     },
     'Due date': {
+      gapOnly: true,
+
       managerOnly: true,
       action: 'Set a deadline',
       done: 'Deadline set',
@@ -175,6 +146,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => (node.value ? { dueDate: node.value } : null),
     },
     Status: {
+      gapOnly: true,
+
       managerOnly: false,
       action: 'Set the status',
       done: 'Status set',
@@ -189,6 +162,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => (node.value !== task.status ? { status: node.value } : null),
     },
     Progress: {
+      gapOnly: true,
+
       managerOnly: false,
       action: 'Record progress',
       done: 'Progress recorded',
@@ -197,6 +172,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => (node.value === '' ? null : { progress: Number(node.value) }),
     },
     Supporting: {
+      edit: 'Change who is supporting',
+
       managerOnly: true,
       action: 'Confirm who is supporting',
       done: 'Supporting members confirmed',
@@ -213,6 +190,8 @@ export async function taskDetailView(mount, params, taskId) {
       payload: (node) => ({ supportingMemberIds: [...node.selectedOptions].map((o) => o.value) }),
     },
     Hierarchy: {
+      edit: 'Move to another milestone',
+
       managerOnly: true,
       action: 'Attach to a milestone',
       done: 'Milestone attached',
@@ -230,6 +209,69 @@ export async function taskDetailView(mount, params, taskId) {
       },
       payload: (node) => (node.value ? { milestoneId: node.value } : null),
     },
+    Reviewer: {
+      managerOnly: true,
+      action: 'Name a reviewer',
+      edit: 'Change reviewer',
+      done: 'Reviewer changed',
+      build: async () =>
+        select(
+          (await loadUsers()).map((u) => ({ value: u.id, label: `${u.name} (${roleLabel(u.role)})` })),
+          task.reviewerId ?? '',
+        ),
+      payload: (node) => (node.value && node.value !== task.reviewerId ? { reviewerId: node.value } : null),
+    },
+    Title: {
+      managerOnly: true,
+      action: 'Give it a title',
+      edit: 'Rename',
+      done: 'Title changed',
+      build: () => el('input', { type: 'text', value: task.title }),
+      payload: (node) => {
+        const next = node.value.trim();
+        return next && next !== task.title ? { title: next } : null;
+      },
+    },
+    Description: {
+      managerOnly: true,
+      action: 'Describe the work',
+      edit: task.description ? 'Edit description' : 'Add a description',
+      done: 'Description saved',
+      build: () => {
+        const box = el('textarea', { rows: '4', placeholder: 'What does this task involve?' });
+        box.value = task.description ?? '';
+        return box;
+      },
+      // Empty clears it, so a description added by mistake can be taken back.
+      payload: (node) => {
+        const next = node.value.trim() || null;
+        return next !== (task.description ?? null) ? { description: next } : null;
+      },
+    },
+    Dependencies: {
+      managerOnly: true,
+      action: 'Say what must land first',
+      edit: 'Change dependencies',
+      done: 'Dependencies changed',
+      build: async () => {
+        const others = (await loadTasks()).filter((t) => t.id !== task.id);
+        if (others.length === 0) {
+          return el('div', { class: 'hint', text: 'There is no other task to depend on yet.' });
+        }
+        const box = el('select', { multiple: true, size: '6' });
+        for (const other of others) {
+          box.append(el('option', {
+            value: other.id,
+            selected: (task.dependencyTaskIds ?? []).includes(other.id),
+          }, `${other.ref} ${other.title}`));
+        }
+        return box;
+      },
+      payload: (node) =>
+        node.selectedOptions
+          ? { dependencyTaskIds: [...node.selectedOptions].map((o) => o.value) }
+          : null,
+    },
   };
 
   /**
@@ -238,16 +280,29 @@ export async function taskDetailView(mount, params, taskId) {
    */
   const fixers = new Map();
 
-  function gapFixer(fieldName) {
-    const spec = GAP_FIELD[fieldName];
+  /**
+   * `mode` is 'gap' when answering an unanswered question and 'edit' when
+   * simply changing a value that is already there. The control and the write
+   * are identical; only what the button says, and what it says when nothing
+   * changed, differ.
+   */
+  function gapFixer(fieldName, mode = 'gap') {
+    const spec = FIELD_EDITOR[fieldName];
     if (!spec) return null;
+    if (mode === 'edit' && spec.gapOnly) return null;
     if (!(spec.managerOnly ? isManager : canDrive)) return null;
+    const openLabel = mode === 'edit' ? (spec.edit ?? 'Change') : spec.action;
 
     const slot = el('div', { class: 'gap-fix' });
 
     const showButton = () =>
       slot.replaceChildren(
-        el('button', { class: 'btn gap-fix-open', type: 'button', text: spec.action, onclick: showForm }),
+        el('button', {
+          class: mode === 'edit' ? 'btn gap-fix-open subtle' : 'btn gap-fix-open',
+          type: 'button',
+          text: openLabel,
+          onclick: showForm,
+        }),
       );
 
     async function showForm() {
@@ -270,7 +325,9 @@ export async function taskDetailView(mount, params, taskId) {
               event.preventDefault();
               const payload = spec.payload(control);
               if (!payload) {
-                errors.replaceChildren(errorBox({ message: 'Choose a value first.' }));
+                errors.replaceChildren(errorBox({
+                  message: mode === 'edit' ? 'Nothing has changed yet.' : 'Choose a value first.',
+                }));
                 return;
               }
               save.disabled = true;
@@ -306,7 +363,7 @@ export async function taskDetailView(mount, params, taskId) {
       );
     }
 
-    fixers.set(fieldName, showForm);
+    if (mode === 'gap') fixers.set(fieldName, showForm);
     showButton();
     return slot;
   }
@@ -328,7 +385,15 @@ export async function taskDetailView(mount, params, taskId) {
     return [
       el('dt', { id: factId(label), class: `fact-label${marked}` }, label,
         gaps.length ? el('span', { class: 'sr-only', text: ' — needs information' }) : null),
-      el('dd', { class: `fact-value${marked}` }, ...content, ...gaps.map(gapNote)),
+      el(
+        'dd',
+        { class: `fact-value${marked}` },
+        ...content,
+        ...gaps.map(gapNote),
+        // A gap already carries its own control; a second one beside it would
+        // be two buttons for one decision.
+        gaps.length === 0 ? gapFixer(label, 'edit') : null,
+      ),
     ];
   }
 
@@ -336,6 +401,10 @@ export async function taskDetailView(mount, params, taskId) {
   const facts = el(
     'dl',
     { class: 'facts' },
+    fact('Title', task.title),
+    fact('Description', task.description
+      ? el('div', { class: 'fact-prose', text: task.description })
+      : el('span', { class: 'muted', text: 'None' })),
     fact('Owner', task.ownerName ? task.ownerName : unassignedTag()),
     fact('Reviewer', task.reviewerName ?? '—'),
     fact('Supporting', task.supportingMemberNames.join(', ') || '—'),
@@ -376,7 +445,6 @@ export async function taskDetailView(mount, params, taskId) {
         ? el('div', { class: 'small muted', text: task.scheduleReviewNote })
         : null,
     ),
-    fact('Day plan', dayPlanList(task, maxEffortDays)),
     task.sourceTimeline
       ? fact('Planned window', task.sourceTimeline,
           el('div', { class: 'small muted', text: 'Relative week range from the build timeline.' }))
@@ -611,8 +679,6 @@ export async function taskDetailView(mount, params, taskId) {
     value: String(task.effortDays ?? 1),
   });
   const derivedDue = el('div', { class: 'derived-due' });
-  const outcomeByDate = new Map((task.dayPlans ?? []).map((p) => [p.date, p.outcome]));
-  const scheduleDays = el('div', { class: 'day-plan' });
   const scheduleNote = el('div', { class: 'hint' });
 
   const takenDays = () => {
@@ -637,27 +703,10 @@ export async function taskDetailView(mount, params, taskId) {
       }),
     );
 
-    if (days.length <= 1) {
-      scheduleDays.replaceChildren();
-      scheduleNote.textContent = 'A one-day task is a single outcome — the task itself.';
-      return;
-    }
-    scheduleNote.textContent = `${days.length} working days, each needing its own outcome.`;
-    scheduleDays.replaceChildren(
-      ...days.map((day, index) =>
-        el(
-          'div',
-          { class: 'day-plan-row' },
-          el('span', { class: 'day-plan-label', text: `Day ${index + 1} · ${formatDate(day)}` }),
-          el('input', {
-            type: 'text',
-            value: outcomeByDate.get(day) ?? '',
-            placeholder: `What is finished by the end of day ${index + 1}?`,
-            oninput: (event) => outcomeByDate.set(day, event.target.value),
-          }),
-        ),
-      ),
-    );
+    scheduleNote.textContent =
+      days.length <= 1
+        ? 'One working day. Report what it produced as you go.'
+        : `${days.length} working days. Report what each one produced as you go.`;
   }
   scheduleStart.addEventListener('change', renderScheduleDays);
   scheduleDaysInput.addEventListener('input', renderScheduleDays);
@@ -670,15 +719,10 @@ export async function taskDetailView(mount, params, taskId) {
       onsubmit: async (event) => {
         event.preventDefault();
         scheduleErrors.replaceChildren();
-        const days = coveredDays();
         try {
           await api.proposeSchedule(task.id, {
             startDate: scheduleStart.value,
             effortDays: takenDays(),
-            dayPlans:
-              days.length > 1
-                ? days.map((day) => ({ date: day, outcome: (outcomeByDate.get(day) ?? '').trim() }))
-                : [],
           });
           toast('Schedule set');
           taskDetailView(mount, params, taskId);
@@ -699,8 +743,7 @@ export async function taskDetailView(mount, params, taskId) {
       field('Start date', scheduleStart, 'A working day — the deadline is counted in them.'),
       field('Working days', scheduleDaysInput, `Budgeted ${budget}. Ask for more if you need it.`)),
     derivedDue,
-    el('div', { class: 'field' },
-      el('label', { text: 'What each day delivers' }), scheduleDays, scheduleNote),
+    scheduleNote,
     el('div', { class: 'row' },
       el('button', { class: 'primary', type: 'submit', text: noDeadlineYet ? 'Set schedule' : 'Update schedule' })),
   );

@@ -10,9 +10,13 @@ import { applyInPlaceMigrations } from './migrations.ts';
 import { config } from '../config/index.ts';
 import { nowTimestamp } from '../lib/dates.ts';
 
-export const SCHEMA_VERSION = '12';
+export const SCHEMA_VERSION = '13';
 
 /**
+ * Schema 13 dropped `task_day_plans`. Day-by-day delivery is no longer
+ * planned up front by whoever assigns the task; the owner reports what each
+ * day produced in `task_day_logs` as they work.
+ *
  * Schema 12 rebuilt `deadline_change_requests` around working DAYS rather
  * than dates: a task's deadline is now derived from its effort budget and a
  * start date, so asking for a later date no longer means anything. Open

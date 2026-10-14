@@ -10,7 +10,6 @@ import {
   toast,
   todayIso,
   addDays,
-  daysInRange,
   formatDate,
 } from '../ui.js';
 
@@ -60,7 +59,6 @@ export async function createTaskView(mount) {
   // Both dates are required, and the browser enforces the span before the
   // request is even made. The server checks it again regardless.
   const startInput = el('input', { type: 'date', name: 'startDate', value: '' });
-  const dueInput = el('input', { type: 'date', name: 'dueDate', value: '' });
   // The Task Assigner's unit is effort, not dates. The owner proposes the days that
   // spend this budget, and the reviewer agrees them.
   const effortInput = el('input', {
@@ -83,67 +81,8 @@ export async function createTaskView(mount) {
 
   const picked = (node) => [...node.selectedOptions].map((o) => o.value);
 
-  // --- day-by-day outcomes -------------------------------------------------
-  // One input per calendar day the task covers. Text already typed is kept
-  // against its date, so nudging the end date does not wipe the other days.
-  const outcomeByDate = new Map();
-  const dayList = el('div', { class: 'day-plan' });
-  const dayNote = el('div', { class: 'hint' });
-  const dayBox = el(
-    'div',
-    { class: 'field day-plan-box' },
-    el('label', { text: 'What each day delivers' }),
-    dayList,
-    dayNote,
-  );
-
-  function coveredDays() {
-    return daysInRange(startInput.value, dueInput.value).slice(0, maxEffortDays);
-  }
-
-  function renderDays() {
-    // The due date can never precede the start date, nor run past the limit.
-    dueInput.min = startInput.value || '';
-    dueInput.max = startInput.value ? addDays(startInput.value, maxEffortDays - 1) : '';
-    if (startInput.value && dueInput.value && dueInput.value < startInput.value) {
-      dueInput.value = startInput.value;
-    }
-    if (startInput.value && dueInput.value && dueInput.value > dueInput.max) {
-      dueInput.value = dueInput.max;
-    }
-
-    const days = coveredDays();
-    if (days.length <= 1) {
-      dayList.replaceChildren();
-      dayNote.textContent =
-        'A one-day task is a single outcome — the task itself. Extend the end date to plan day by day.';
-      dayBox.className = 'field day-plan-box is-single';
-      return;
-    }
-
-    dayBox.className = 'field day-plan-box';
-    dayNote.textContent = `This task covers ${days.length} days. Each one needs its own outcome.`;
-    dayList.replaceChildren(
-      ...days.map((day, index) => {
-        const input = el('input', {
-          type: 'text',
-          required: true,
-          value: outcomeByDate.get(day) ?? '',
-          placeholder: `What is finished by the end of day ${index + 1}?`,
-          oninput: (event) => outcomeByDate.set(day, event.target.value),
-        });
-        return el(
-          'div',
-          { class: 'day-plan-row' },
-          el('span', { class: 'day-plan-label', text: `Day ${index + 1} · ${formatDate(day)}` }),
-          input,
-        );
-      }),
-    );
-  }
-
-  startInput.addEventListener('change', renderDays);
-  dueInput.addEventListener('change', renderDays);
+  // Nothing day-by-day here: whoever assigns a task budgets the effort, and
+  // the owner reports what each day produced once they are working on it.
 
   async function loadMilestones() {
     if (!workstreamSel.value) {
@@ -182,7 +121,6 @@ export async function createTaskView(mount) {
         errors.replaceChildren();
         submit.disabled = true;
         try {
-          const days = coveredDays();
           const created = await api.createTask({
             workstreamId: workstreamSel.value,
             milestoneId: milestoneSel.value || null,
@@ -193,16 +131,9 @@ export async function createTaskView(mount) {
             supportingMemberIds: picked(supportBox),
             priority: prioritySel.value || null,
             effortDays: Number(effortInput.value),
-            // Omitted unless the Task Assigner is scheduling the task directly;
-            // normally the owner proposes these.
-            ...(startInput.value && dueInput.value
-              ? { startDate: startInput.value, dueDate: dueInput.value }
-              : {}),
-            // Only sent for a multi-day task; a one-day task is its own outcome.
-            dayPlans:
-              days.length > 1
-                ? days.map((day) => ({ date: day, outcome: (outcomeByDate.get(day) ?? '').trim() }))
-                : [],
+            // Omitted unless the Task Assigner is scheduling it directly;
+            // normally the owner picks the start date themselves.
+            ...(startInput.value ? { startDate: startInput.value } : {}),
             dependencyTaskIds: picked(dependencyBox),
             nextAction: nextInput.value.trim() || null,
           });
@@ -232,9 +163,8 @@ export async function createTaskView(mount) {
           'the dates that spend it.',
       )),
     el('div', { class: 'grid-2' },
-      field('Start date', startInput, 'Optional — leave blank for the owner to propose.'),
-      field('End date', dueInput, `Optional. Must fit the ${maxEffortDays} working-day budget.`)),
-    dayBox,
+      field('Start date', startInput,
+        'Optional — normally the owner picks this, and the deadline follows from the budget.')),
     el('div', { class: 'grid-2' },
       field('Supporting members', supportBox, 'Ctrl/Cmd-click to select several.'),
       field('Dependencies', dependencyBox, 'Tasks that must land before this one.')),
@@ -254,6 +184,5 @@ export async function createTaskView(mount) {
     card(null, form),
   );
 
-  renderDays();
   await loadMilestones();
 }

@@ -27,7 +27,6 @@ import {
   workingDaysInRange,
 } from '../lib/dates.ts';
 import { validationError, type ErrorDetail } from '../lib/errors.ts';
-import type { TaskDayPlan } from './types.ts';
 
 /** Matches `config.rules.maxTaskEffortDays`; passed in so this stays pure. */
 export const DEFAULT_MAX_TASK_EFFORT_DAYS = 5;
@@ -56,15 +55,12 @@ export function scheduleDays(start: IsoDate, due: IsoDate): IsoDate[] {
 export type ScheduleInput = {
   readonly startDate: IsoDate | null | undefined;
   readonly dueDate: IsoDate | null | undefined;
-  readonly dayPlans?: readonly { date: IsoDate; outcome: string }[] | undefined;
 };
 
 export type NormalisedSchedule = {
   readonly startDate: IsoDate;
   readonly dueDate: IsoDate;
   readonly spanDays: number;
-  /** Ordered by date. Empty for a single-day task that supplied no outcome. */
-  readonly dayPlans: readonly TaskDayPlan[];
 };
 
 /**
@@ -112,93 +108,8 @@ export function normaliseSchedule(
     startDate: start,
     dueDate: due,
     spanDays: span,
-    dayPlans: normaliseDayPlans(start, due, input.dayPlans),
   };
 }
-
-/**
- * Check the per-day outcomes against the days the task actually covers.
- *
- * A multi-day task must name an outcome for every one of its days — no more,
- * no fewer. A single-day task may state one, but the day and the task are the
- * same thing, so it is not required to.
- */
-export function normaliseDayPlans(
-  start: IsoDate,
-  due: IsoDate,
-  plans: readonly { date: IsoDate; outcome: string }[] | undefined,
-): readonly TaskDayPlan[] {
-  const days = scheduleDays(start, due);
-  const supplied = plans ?? [];
-  const details: ErrorDetail[] = [];
-
-  const byDate = new Map<IsoDate, string>();
-  supplied.forEach((plan, index) => {
-    if (!days.includes(plan.date)) {
-      details.push({
-        path: `dayPlans[${index}].date`,
-        message: `${plan.date} is outside the task's dates (${start} to ${due})`,
-      });
-      return;
-    }
-    if (byDate.has(plan.date)) {
-      details.push({ path: `dayPlans[${index}].date`, message: `${plan.date} is listed twice` });
-      return;
-    }
-    const outcome = plan.outcome.trim();
-    if (outcome === '') {
-      details.push({
-        path: `dayPlans[${index}].outcome`,
-        message: `say what ${formatDateHuman(plan.date)} is meant to produce`,
-      });
-      return;
-    }
-    if (outcome.length > MAX_DAY_OUTCOME_LENGTH) {
-      details.push({
-        path: `dayPlans[${index}].outcome`,
-        message: `must be at most ${MAX_DAY_OUTCOME_LENGTH} characters`,
-      });
-      return;
-    }
-    byDate.set(plan.date, outcome);
-  });
-
-  if (days.length > 1) {
-    for (const day of days) {
-      if (!byDate.has(day)) {
-        details.push({
-          path: `dayPlans.${day}`,
-          message: `${formatDateHuman(day)} has no outcome — say what that day delivers`,
-        });
-      }
-    }
-  }
-
-  if (details.length > 0) {
-    throw validationError(
-      days.length > 1
-        ? `A ${days.length}-day task has to say what each day delivers`
-        : 'The day outcome does not match the task dates',
-      details,
-    );
-  }
-
-  return days.filter((day) => byDate.has(day)).map((day) => ({ date: day, outcome: byDate.get(day) as string }));
-}
-
-/** Days in `[start, due]` that no stored outcome covers. Empty when complete. */
-export function uncoveredDays(
-  start: IsoDate,
-  due: IsoDate,
-  plans: readonly TaskDayPlan[],
-): IsoDate[] {
-  const covered = new Set(plans.filter((p) => p.outcome.trim() !== '').map((p) => p.date));
-  return scheduleDays(start, due).filter((day) => !covered.has(day));
-}
-
-/** True when the task covers several days and is therefore owed day outcomes. */
-export const needsDayOutcomes = (start: IsoDate, due: IsoDate): boolean =>
-  taskSpanDays(start, due) > 1;
 
 /** One-line summary used in history notes, e.g. "Mar 3 → Mar 5 (3 days)". */
 export function describeSchedule(start: IsoDate, due: IsoDate): string {
@@ -250,7 +161,6 @@ export type ProposedSchedule = {
   readonly dueDate: IsoDate;
   /** Working days the proposal actually spends. */
   readonly effortUsed: number;
-  readonly dayPlans: readonly TaskDayPlan[];
 };
 
 /**
@@ -280,8 +190,7 @@ export function scheduleFromStart(
   options: {
     /** Days the owner will actually take. Defaults to the whole budget. */
     readonly effortDays?: number | null;
-    readonly dayPlans?: readonly { date: IsoDate; outcome: string }[] | undefined;
-  } = {},
+    } = {},
   maxEffortDays: number = DEFAULT_MAX_TASK_EFFORT_DAYS,
 ): ProposedSchedule {
   if (startDate === null || startDate === undefined) {
@@ -319,7 +228,6 @@ export function scheduleFromStart(
     startDate,
     dueDate,
     effortUsed: taking,
-    dayPlans: normaliseDayPlans(startDate, dueDate, options.dayPlans),
   };
 }
 
@@ -363,5 +271,5 @@ export function normaliseProposedSchedule(
     );
   }
 
-  return { startDate: start, dueDate: due, effortUsed, dayPlans: normaliseDayPlans(start, due, input.dayPlans) };
+  return { startDate: start, dueDate: due, effortUsed };
 }

@@ -24,7 +24,6 @@ import {
   formatDateHuman,
   daysBetween,
   workingDaysInclusive,
-  workingDayDeadline,
   nextWorkingDay,
   type IsoDate,
   type IsoTimestamp,
@@ -282,12 +281,6 @@ export function seedDemo(db: Database, dataset: DemoDataset = DEMO_DATA): void {
         createdById: managerId,
         supportingMemberIds: (demoTask.supportKeys ?? []).map(requireUser),
         dependencyTaskIds: [],
-        dayPlans: (demoTask.dayOutcomes ?? []).map((outcome, i) => ({
-          // The i-th working day from the start, so an outcome always has a
-          // day to belong to even if the window is shorter than the list.
-          date: workingDayDeadline(demoStart(today, demoTask.startInDays), i + 1),
-          outcome,
-        })),
       });
       resolved.tasks.set(demoTask.key, taskId);
 

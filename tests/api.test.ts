@@ -7,7 +7,6 @@ import {
   todayDate,
   nextWorkingDay,
   workingDayDeadline,
-  workingDaysInRange,
 } from '../src/lib/dates.ts';
 
 let db: Database;
@@ -166,7 +165,6 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
     const reviewer = users.body.find((u: { email: string }) => u.email === 'demo.employee2@example.com');
 
     const flowStart = nextWorkingDay(todayDate());
-    const flowDays = workingDaysInRange(flowStart, workingDayDeadline(flowStart, 3));
 
     const created = await server.request('POST', '/api/tasks', {
       token: managerToken,
@@ -182,14 +180,10 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
         startDate: flowStart,
         // Three of the five budgeted days; the deadline follows from this.
         scheduledDays: 3,
-        dayPlans: flowDays.map((date, i) => ({
-          date,
-          outcome: ['Approach drafted.', 'Implementation reviewed.', 'Evidence captured and linked.'][i] as string,
-        })),
       },
     });
     assert.equal(created.status, 201);
-    assert.equal(created.body.dayPlans.length, 3);
+    assert.equal(created.body.dueDate, workingDayDeadline(flowStart, 3));
     const taskId = created.body.id;
     assert.equal(created.body.status, 'not_started');
 
@@ -306,12 +300,10 @@ describe('the end-to-end flow a manager and employee actually follow', () => {
     const after = await server.request('GET', `/api/tasks/${task.id}`, { token: employeeToken });
     assert.equal(after.body.task.dueDate, extended);
     assert.equal(after.body.task.originalDueDate, task.originalDueDate);
-    // The days the extension added have no outcome yet, and that is reported
-    // rather than filled in on the manager's behalf.
+    // Nothing is owed day by day: there is no up-front plan to leave a gap in.
     assert.ok(
-      after.body.task.clarifications.some(
-        (c: { code: string; resolved: boolean }) =>
-          c.code === 'MISSING_DAY_OUTCOMES' && !c.resolved,
+      !after.body.task.clarifications.some((c: { code: string }) =>
+        c.code.startsWith('MISSING_DAY'),
       ),
     );
   });

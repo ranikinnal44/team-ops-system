@@ -20,7 +20,6 @@ import type {
   TaskHistoryEntry,
   Comment,
   DeadlineChangeRequest,
-  TaskDayPlan,
   TaskDayLog,
 } from '../domain/types.ts';
 import {
@@ -53,8 +52,6 @@ import {
 import { evaluateTask, attentionScore, type RuleThresholds } from '../domain/exceptions.ts';
 import {
   normaliseSchedule,
-  uncoveredDays,
-  needsDayOutcomes,
   describeSchedule,
   normaliseEffortDays,
   scheduleFromStart,
@@ -95,9 +92,6 @@ const transitionActor = (
 /** Largest effort budget a task may carry, in working days. */
 const maxEffortDays = (): number => config.rules.maxTaskEffortDays;
 
-/** The sentence the clarification queue shows for days with no outcome. */
-const missingOutcomesDetail = (days: readonly IsoDate[]): string =>
-  `No outcome is defined for ${days.map(formatDateHuman).join(', ')}.`;
 
 // --- read model -----------------------------------------------------------
 
@@ -211,7 +205,6 @@ export type CreateTaskInput = {
   /** Working days the task will take. Defaults to its effort budget. */
   scheduledDays?: number;
   /** One per calendar day; required once the task covers more than one day. */
-  dayPlans?: readonly TaskDayPlan[];
   dependencyTaskIds?: readonly string[];
   nextAction?: string | null;
 };
@@ -269,7 +262,7 @@ export function createTask(
       ? scheduleFromStart(
           input.startDate,
           effortDays,
-          { effortDays: input.scheduledDays, dayPlans: input.dayPlans },
+          { effortDays: input.scheduledDays },
           maxEffortDays(),
         )
       : null;
@@ -302,7 +295,6 @@ export function createTask(
       createdById: actor.id,
       supportingMemberIds: input.supportingMemberIds ?? [],
       dependencyTaskIds: input.dependencyTaskIds ?? [],
-      dayPlans: scheduled?.dayPlans ?? [],
     });
 
     const ownerName = input.ownerId
@@ -326,18 +318,6 @@ export function createTask(
     // The day-by-day plan is part of the commitment, so it belongs in the log
     // next to the dates rather than only in the task record. One entry for the
     // whole plan, not one per day — the feed stays readable.
-    if (scheduled !== null && scheduled.dayPlans.length > 0) {
-      activityRepo.appendHistory(db, {
-        taskId,
-        actorId: actor.id,
-        kind: HistoryKind.FieldChanged,
-        field: 'dayPlans',
-        fromValue: null,
-        toValue: formatDayPlans(scheduled.dayPlans),
-        note: `Outcomes defined for each of the ${scheduled.effortUsed} working days.`,
-        createdAt: timestamp,
-      });
-    }
 
     // Anything left undecided at creation goes straight onto the Task Assigner's
     // clarification queue instead of being silently defaulted. Dates are not
@@ -467,7 +447,6 @@ export type UpdateTaskInput = {
   startDate?: IsoDate;
   dueDate?: IsoDate;
   /** The complete day-by-day plan for the task's dates, not a partial patch. */
-  dayPlans?: readonly TaskDayPlan[];
   milestoneId?: string | null;
   deliverableId?: string | null;
   dependencyTaskIds?: readonly string[];
@@ -476,11 +455,6 @@ export type UpdateTaskInput = {
 };
 
 const labelOf = (value: string | null): string => value ?? '\u2014';
-/** "Mar 3: wiring loom routed · Mar 4: bench test passed" — one history value. */
-const formatDayPlans = (plans: readonly TaskDayPlan[]): string =>
-  plans.length === 0
-    ? '\u2014'
-    : plans.map((p) => `${formatDateHuman(p.date)}: ${p.outcome}`).join(' \u00b7 ');
 const dateLabel = (value: IsoDate | null): string =>
   value === null ? 'not set' : formatDateHuman(value);
 const priorityLabel = (value: Priority | null): string =>
@@ -759,25 +733,12 @@ export function updateTask(
 
   const startAfter = fields.startDate !== undefined ? fields.startDate : task.startDate;
   const dueAfter = fields.dueDate !== undefined ? fields.dueDate : task.dueDate;
-  const scheduleTouched =
-    fields.startDate !== undefined || fields.dueDate !== undefined || fields.dayPlans !== undefined;
-
-  /** The plan to store, when this update rewrites the schedule. */
-  let nextDayPlans: readonly TaskDayPlan[] | null = null;
+  const scheduleTouched = fields.startDate !== undefined || fields.dueDate !== undefined;
 
   if (scheduleTouched) {
     // Re-running the whole rule here is what stops a one-day task being added
-    // and then quietly stretched into a month. Outcomes already recorded are
-    // carried over where they still fall inside the new dates; days that end
-    // up with none are reported rather than silently dropped.
-    const carried =
-      startAfter !== null && dueAfter !== null
-        ? task.dayPlans.filter((plan) => plan.date >= startAfter && plan.date <= dueAfter)
-        : [];
-    nextDayPlans = normaliseSchedule(
-      { startDate: startAfter, dueDate: dueAfter, dayPlans: fields.dayPlans ?? carried },
-      maxEffortDays(),
-    ).dayPlans;
+    // and then quietly stretched into a month.
+    normaliseSchedule({ startDate: startAfter, dueDate: dueAfter }, maxEffortDays());
   }
 
   if (fields.startDate !== undefined && fields.startDate !== task.startDate) {
@@ -862,25 +823,6 @@ export function updateTask(
         // The list was read out of free text; setting it deliberately confirms it.
         resolvedCodes.push(ClarificationCode.InferredSupport);
       }
-    }
-
-    if (nextDayPlans !== null) {
-      const before = formatDayPlans(task.dayPlans);
-      const after = formatDayPlans(nextDayPlans);
-      if (before !== after) {
-        taskRepo.replaceDayPlans(db, task.id, nextDayPlans);
-        record({
-          kind: HistoryKind.FieldChanged,
-          field: 'dayPlans',
-          fromValue: before,
-          toValue: after,
-        });
-      }
-      // `normaliseSchedule` has already refused anything short of full cover,
-      // so reaching here means every day is accounted for — either by an
-      // outcome, or by the task having shrunk back to a single day with
-      // nothing left to break down. Either way the gap is closed.
-      resolvedCodes.push(ClarificationCode.MissingDayOutcomes);
     }
 
     if (fields.dependencyTaskIds !== undefined) {
@@ -1205,9 +1147,6 @@ export function decideDeadlineChange(
         createdAt: timestamp,
       });
       taskRepo.updateTaskColumns(db, request.taskId, patch, timestamp);
-      if (newDueDate !== null) {
-        applyDayPlanGapAfterReschedule(db, request.taskId, newDueDate, actor.id);
-      }
     }
 
     activityRepo.appendHistory(db, {
@@ -1229,44 +1168,6 @@ export function decideDeadlineChange(
   });
 }
 
-/**
- * An approved extension moves the end date without anyone having said what the
- * newly added days deliver. Rather than invent outcomes — or drop the rule —
- * the gap goes onto the Task Assigner's clarification queue, where the rest of the
- * "unknown is not decided" handling already lives. Setting `dayPlans` through
- * `updateTask` closes it.
- */
-function applyDayPlanGapAfterReschedule(
-  db: Database,
-  taskId: string,
-  newDueDate: IsoDate,
-  actorId: string,
-): void {
-  const task = taskRepo.findTaskById(db, taskId);
-  if (!task || task.startDate === null) return;
-
-  taskRepo.pruneDayPlansOutside(db, taskId, task.startDate, newDueDate);
-  const kept = task.dayPlans.filter(
-    (plan) => plan.date >= (task.startDate as IsoDate) && plan.date <= newDueDate,
-  );
-
-  if (!needsDayOutcomes(task.startDate, newDueDate)) {
-    // Back to a single day: there is nothing left to define.
-    clarificationRepo.resolveByCode(db, taskId, ClarificationCode.MissingDayOutcomes, actorId);
-    return;
-  }
-
-  const gaps = uncoveredDays(task.startDate, newDueDate, kept);
-  if (gaps.length === 0) {
-    clarificationRepo.resolveByCode(db, taskId, ClarificationCode.MissingDayOutcomes, actorId);
-    return;
-  }
-  clarificationRepo.raiseClarification(db, {
-    taskId,
-    code: ClarificationCode.MissingDayOutcomes,
-    detail: missingOutcomesDetail(gaps),
-  });
-}
 
 export function listDeadlineRequests(
   db: Database,
@@ -1432,7 +1333,6 @@ export type ProposeScheduleInput = {
   startDate: IsoDate;
   /** Working days this will take. Defaults to the whole budget; never more. */
   effortDays?: number;
-  dayPlans?: readonly TaskDayPlan[];
 };
 
 /**
@@ -1472,7 +1372,7 @@ export function proposeSchedule(
   const proposed = scheduleFromStart(
     input.startDate,
     task.effortDays,
-    { effortDays: input.effortDays, dayPlans: input.dayPlans },
+    { effortDays: input.effortDays },
     maxEffortDays(),
   );
 
@@ -1498,7 +1398,6 @@ export function proposeSchedule(
       },
       timestamp,
     );
-    taskRepo.replaceDayPlans(db, task.id, proposed.dayPlans);
     activityRepo.appendHistory(db, {
       taskId: task.id,
       actorId: actor.id,

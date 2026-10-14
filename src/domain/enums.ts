@@ -150,7 +150,6 @@ export type Origin = (typeof Origin)[keyof typeof Origin];
 export const ClarificationCode = {
   MissingDueDate: 'MISSING_DUE_DATE',
   /** A multi-day task has days with no stated outcome. */
-  MissingDayOutcomes: 'MISSING_DAY_OUTCOMES',
   MissingPriority: 'MISSING_PRIORITY',
   MissingStatus: 'MISSING_STATUS',
   AmbiguousStatus: 'AMBIGUOUS_STATUS',
@@ -173,7 +172,6 @@ export type ClarificationCode = (typeof ClarificationCode)[keyof typeof Clarific
 
 export const CLARIFICATION_LABEL: Record<ClarificationCode, string> = {
   MISSING_DUE_DATE: 'Needs a deadline',
-  MISSING_DAY_OUTCOMES: 'Needs an outcome for each day',
   MISSING_PRIORITY: 'Needs a priority',
   MISSING_STATUS: 'Status not stated in source',
   AMBIGUOUS_STATUS: 'Source status could not be mapped',

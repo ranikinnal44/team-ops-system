@@ -153,6 +153,14 @@ export function applyInPlaceMigrations(db: Database): void {
     rebuildTable(db, 'deliverables');
   }
 
+  // --- v13: nobody plans a task day by day --------------------------------
+  // The up-front plan is gone: a Task Assigner budgets effort, and the owner
+  // reports what each day produced in `task_day_logs`. The planned table is
+  // dropped rather than left as a vestige nothing writes to.
+  if (hasTable(db, 'task_day_plans')) {
+    db.exec('DROP TABLE task_day_plans');
+  }
+
   // --- v12: a change request asks for DAYS, not a date --------------------
   // The deadline is derived from the budget now, so a request naming a date
   // would be asking for the wrong thing. The table is rebuilt; any request

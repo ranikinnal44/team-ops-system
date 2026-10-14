@@ -113,7 +113,7 @@ This is the spine. Every role's section below is a view of the same sequence.
 | 1 | Create the project, workstreams and milestones | Task Assigner | Plan |
 | 2 | Create the task, naming a **reviewer** and an **effort budget** | Task Assigner | Tasks → + New task |
 | 3 | Give the task an owner and a priority | Task Assigner | Tasks (bulk) or the task itself |
-| 4 | Pick a start date; the deadline is calculated. Say what each day delivers | Member | Task → Set the schedule |
+| 4 | Pick a start date; the deadline is calculated | Member | Task → Set the schedule |
 | 5 | Start work: **Not Started → In Progress** | Member | Task → Update this task |
 | 7 | Log what each working day produced | Owner or supporting member | Task → Daily outcomes |
 | 8 | Flag a blocker if work stops | Owner | Task → Update this task |
@@ -167,7 +167,7 @@ Open the task and use the **Set the schedule** panel:
 
 - pick a **start date** — it has to be a working day,
 - adjust **working days** if you need fewer than you were budgeted, and
-- for a multi-day task, say **what each day delivers** — one line per working day.
+Nothing has to be planned day by day — you report what each day produced as you go.
 
 The **deadline appears as you type**, counted over working days: three days from a Thursday
 finishes on the Monday, not the Saturday. Submit and the task is scheduled — nobody has to

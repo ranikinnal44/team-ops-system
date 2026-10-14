@@ -143,8 +143,6 @@ export type Task = {
   readonly completedAt: IsoTimestamp | null;
   readonly supportingMemberIds: readonly string[];
   readonly dependencyTaskIds: readonly string[];
-  /** One entry per calendar day, ordered by date. Empty for a single-day task. */
-  readonly dayPlans: readonly TaskDayPlan[];
 };
 
 export type TaskClarification = {

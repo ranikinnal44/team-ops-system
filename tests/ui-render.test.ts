@@ -501,6 +501,36 @@ describe('views render against real AutoDock data', () => {
     assert.match(text, /Imported record/);
   });
 
+  test('a manager can change a task after assigning it; an employee cannot', async () => {
+    await signIn('rani@example.com');
+    const list = await api.api.tasks({});
+    const target = list[0];
+
+    const asManager = mount();
+    await views.taskDetail.taskDetailView(asManager, new URLSearchParams(), target.id);
+    const labels = findAll(asManager, 'button').map((b) => b.text());
+    // The fields the server lets a manager write had no control on this screen
+    // unless a clarification happened to be open against them.
+    // Not the milestone row: on a task with an open gap against it, that row
+    // offers "Attach to a milestone" instead, which is the same control.
+    for (const expected of ['Rename', 'Change owner', 'Change reviewer',
+                            'Change who is supporting', 'Change dependencies']) {
+      assert.ok(labels.includes(expected), `expected a "${expected}" control, got ${labels.join(', ')}`);
+    }
+    assert.match(asManager.text(), /Description/, 'the description must be readable, not just writable');
+
+    // One of their own: an employee cannot open a task they are not on at all.
+    await signIn('faizan@example.com');
+    const mine = await api.api.tasks({});
+    assert.ok(mine.length > 0, 'the fixture should give this employee some work');
+    const asEmployee = mount();
+    await views.taskDetail.taskDetailView(asEmployee, new URLSearchParams(), mine[0].id);
+    const theirs = findAll(asEmployee, 'button').map((b) => b.text());
+    for (const withheld of ['Rename', 'Change owner', 'Change reviewer']) {
+      assert.ok(!theirs.includes(withheld), `an employee must not be offered "${withheld}"`);
+    }
+  });
+
   test('every task reaching the detail screen carries both dates', async () => {
     await signIn('rani@example.com');
     const list = await api.api.tasks({ status: 'in_progress' });
@@ -513,24 +543,6 @@ describe('views render against real AutoDock data', () => {
     const node = mount();
     await views.taskDetail.taskDetailView(node, new URLSearchParams(), list[0].id);
     assert.doesNotMatch(node.text(), /No deadline agreed/);
-  });
-
-  test('a long imported task states why it has no day plan', async () => {
-    await signIn('rani@example.com');
-    // Plan tasks run for weeks, which is longer than anything added here may.
-    const list = await api.api.tasks();
-    const long = list.find(
-      (t: { startDate: string; dueDate: string }) =>
-        t.startDate && t.dueDate && t.dueDate > ui.addDays(t.startDate, 2),
-    );
-    assert.ok(long, 'the imported plan should contain a task longer than the limit');
-
-    const node = mount();
-    await views.taskDetail.taskDetailView(node, new URLSearchParams(), long.id);
-    const text = node.text();
-    assert.match(text, /longer than the 5-day limit/);
-    // Forty rows of "no outcome defined yet" would be noise, not information.
-    assert.equal(findByClass(node, 'day-plan-facts').length, 0);
   });
 
   test('create task form asks for a budget, not dates, and states the cap', async () => {
@@ -546,59 +558,19 @@ describe('views render against real AutoDock data', () => {
     assert.ok(effort, 'expected an effortDays input');
     assert.equal(effort.getAttribute('required'), '', 'the budget is what a manager must give');
 
-    for (const name of ['startDate', 'dueDate']) {
-      const input = byName(node, name);
-      assert.ok(input, `expected a ${name} input`);
+    // No due date to give: it is derived from the budget and the start.
+    assert.equal(byName(node, 'dueDate'), null, 'a deadline is never typed');
+    assert.doesNotMatch(text, /What each day delivers/, 'nobody plans the days up front');
+
+    {
+      const input = byName(node, 'startDate');
+      assert.ok(input, 'expected a startDate input');
       assert.equal(
         input.getAttribute('required'),
         null,
-        `${name} must be optional — the owner proposes it`,
+        'the start date must be optional — the owner normally picks it',
       );
     }
-  });
-
-  test('extending the end date asks for an outcome per day', async () => {
-    await signIn('rani@example.com');
-    const node = mount();
-    await views.createTask.createTaskView(node);
-
-    const start = byName(node, 'startDate') as StubElement;
-    const due = byName(node, 'dueDate') as StubElement;
-    // Dates start blank now — a manager budgets effort and leaves the days to
-    // the owner — so this test schedules the task directly to reach the form.
-    start.value = ui.todayIso();
-    due.value = ui.todayIso();
-    await fire(start, 'change', { target: start });
-
-    // A single-day task has nothing to break down.
-    assert.equal(findByClass(node, 'day-plan-row').length, 0);
-    assert.match(node.text(), /A one-day task is a single outcome/);
-
-    due.value = ui.addDays(start.value, 2);
-    await fire(due, 'change', { target: due });
-
-    const rows = findByClass(node, 'day-plan-row');
-    assert.equal(rows.length, 3, 'a three-day task asks for three outcomes');
-    assert.match(node.text(), /This task covers 3 days/);
-    for (const row of rows) {
-      assert.ok(row.text().startsWith('Day '), 'each row is labelled with its day');
-    }
-  });
-
-  test('the end date cannot be pushed past the budget cap', async () => {
-    await signIn('rani@example.com');
-    const node = mount();
-    await views.createTask.createTaskView(node);
-
-    const start = byName(node, 'startDate') as StubElement;
-    const due = byName(node, 'dueDate') as StubElement;
-    start.value = ui.todayIso();
-    await fire(start, 'change', { target: start });
-    due.value = ui.addDays(start.value, 30);
-    await fire(due, 'change', { target: due });
-
-    assert.equal(due.value, ui.addDays(start.value, 4), 'the form pulls it back to the cap');
-    assert.equal(findByClass(node, 'day-plan-row').length, 5);
   });
 
   test('the plan resolves the sole project without a listing screen', async () => {
@@ -1079,35 +1051,6 @@ describe('views render against the demo dataset too', () => {
     assert.match(node.text(), /My work/);
   });
 
-  test('task detail lists the outcome for each day of a multi-day task', async () => {
-    const result = await api.api.login('demo.manager@example.com', seedPasscode('demo.manager@example.com'));
-    api.session.save(result.token, result.user);
-    const all = await api.api.tasks();
-    const multiDay = all.find((t: { dayPlans: unknown[] }) => t.dayPlans.length > 1);
-    assert.ok(multiDay, 'the demo dataset should contain a multi-day task');
-
-    const node = mount();
-    await views.taskDetail.taskDetailView(node, new URLSearchParams(), multiDay.id);
-    const text = node.text();
-    assert.match(text, /Day plan/);
-    for (const plan of multiDay.dayPlans) {
-      assert.ok(text.includes(plan.outcome), `the outcome for ${plan.date} should be shown`);
-    }
-  });
-
-  test('a single-day task says so rather than showing an empty day plan', async () => {
-    const result = await api.api.login('demo.manager@example.com', seedPasscode('demo.manager@example.com'));
-    api.session.save(result.token, result.user);
-    const all = await api.api.tasks();
-    const oneDay = all.find(
-      (t: { startDate: string; dueDate: string }) => t.startDate === t.dueDate,
-    );
-    assert.ok(oneDay, 'the demo dataset should contain a single-day task');
-
-    const node = mount();
-    await views.taskDetail.taskDetailView(node, new URLSearchParams(), oneDay.id);
-    assert.match(node.text(), /Single-day task/);
-  });
 });
 
 describe('the live Stream 1 project renders', () => {

@@ -4,14 +4,13 @@ import type { Database } from '../src/db/connection.ts';
 import { freshDb, manager, employee1, employee2, employee3, taskByRef } from './helpers.ts';
 import * as tasks from '../src/services/task.service.ts';
 import * as projects from '../src/services/project.service.ts';
-import { TaskStatus, HistoryKind, ClarificationCode } from '../src/domain/enums.ts';
+import { TaskStatus, HistoryKind } from '../src/domain/enums.ts';
 import { AppError, ErrorCode } from '../src/lib/errors.ts';
 import {
   todayDate,
   addDays,
   nextWorkingDay,
   workingDayDeadline,
-  workingDaysInRange,
 } from '../src/lib/dates.ts';
 
 let db: Database;
@@ -23,9 +22,6 @@ const today = (): string => todayDate();
 
 /** The first working day from today — a task cannot start on a weekend. */
 const workStart = (): string => nextWorkingDay(todayDate());
-/** The nth working day of a schedule starting there, weekends skipped. */
-const workDay = (n: number): string =>
-  workingDaysInRange(workStart(), workingDayDeadline(workStart(), 10))[n] as string;
 
 
 function anyPlacement(d: Database): { workstreamId: string; milestoneId: string } {
@@ -47,14 +43,8 @@ describe('task creation', () => {
       priority: 'P1',
       startDate: workStart(),
       scheduledDays: 3,
-      dayPlans: [
-        { date: workDay(0), outcome: 'Torque spec confirmed against the drawing.' },
-        { date: workDay(1), outcome: 'All six latches measured and logged.' },
-        { date: workDay(2), outcome: 'Out-of-spec latches re-torqued and signed off.' },
-      ],
     });
 
-    assert.equal(created.dayPlans.length, 3);
     assert.match(created.ref, /^[A-Z]{2,8}-[A-Z0-9]{2,8}-\d{3}$/);
     assert.equal(created.status, TaskStatus.NotStarted);
     assert.equal(created.progress, 0);
@@ -101,17 +91,24 @@ describe('task creation', () => {
     );
   });
 
-  test('a due date before the start date is rejected', () => {
+  test('a task cannot start on a weekend', () => {
+    // A backwards due date is no longer expressible — the deadline is derived
+    // — so the remaining way to get the dates wrong is a non-working start.
+    const saturday = (() => {
+      let day = today();
+      while (new Date(`${day}T00:00:00Z`).getUTCDay() !== 6) day = addDays(day, 1);
+      return day;
+    })();
     assert.throws(
       () =>
         tasks.createTask(db, manager(db), {
           ...anyPlacement(db),
-          title: 'Backwards',
+          title: 'Starts on a Saturday',
           effortDays: 5,
           reviewerId: manager(db).id,
           ownerId: employee1(db).id,
           priority: 'P2',
-          startDate: addDays(today(), 5),
+          startDate: saturday,
           scheduledDays: 1,
         }),
       (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
@@ -179,7 +176,6 @@ describe('task creation', () => {
 
   test('taking fewer days than budgeted is fine — the budget is a ceiling', () => {
     const start = nextWorkingDay(today());
-    const days = workingDaysInRange(start, workingDayDeadline(start, 3));
     const created = tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'Three of the five budgeted',
@@ -189,99 +185,13 @@ describe('task creation', () => {
       priority: 'P2',
       startDate: start,
       scheduledDays: 3,
-      dayPlans: days.map((date, i) => ({ date, outcome: `Day ${i + 1}.` })),
     });
-    assert.equal(created.dayPlans.length, 3);
     // Derived, and weekend-aware: three working days from the start.
     assert.equal(created.dueDate, workingDayDeadline(start, 3));
   });
 
-  test('a multi-day task with no day outcomes is refused', () => {
-    assert.throws(
-      () =>
-        tasks.createTask(db, manager(db), {
-          ...anyPlacement(db),
-          title: 'Two days, no plan',
-          effortDays: 5,
-          reviewerId: manager(db).id,
-          ownerId: employee1(db).id,
-          priority: 'P2',
-          startDate: nextWorkingDay(today()),
-          scheduledDays: 2,
-        }),
-      (error: unknown) =>
-        error instanceof AppError &&
-        error.code === ErrorCode.VALIDATION &&
-        error.details.length === 2,
-    );
-  });
-
-  test('a multi-day task missing one day\u2019s outcome names that day', () => {
-    assert.throws(
-      () =>
-        tasks.createTask(db, manager(db), {
-          ...anyPlacement(db),
-          title: 'Second day unaccounted for',
-          effortDays: 5,
-          reviewerId: manager(db).id,
-          ownerId: employee1(db).id,
-          priority: 'P2',
-          startDate: workStart(),
-          scheduledDays: 2,
-          dayPlans: [{ date: workDay(0), outcome: 'Bench set up.' }],
-        }),
-      (error: unknown) =>
-        error instanceof AppError &&
-        error.details.some((d) => d.path === `dayPlans.${addDays(today(), 1)}`),
-    );
-  });
-
-  test('a blank day outcome does not count as defining the day', () => {
-    assert.throws(
-      () =>
-        tasks.createTask(db, manager(db), {
-          ...anyPlacement(db),
-          title: 'Whitespace is not a plan',
-          effortDays: 5,
-          reviewerId: manager(db).id,
-          ownerId: employee1(db).id,
-          priority: 'P2',
-          startDate: workStart(),
-          scheduledDays: 2,
-          dayPlans: [
-            { date: workDay(0), outcome: 'Bench set up.' },
-            { date: workDay(1), outcome: '   ' },
-          ],
-        }),
-      (error: unknown) => error instanceof AppError && error.code === ErrorCode.VALIDATION,
-    );
-  });
-
-  test('a day outcome outside the task dates is refused', () => {
-    assert.throws(
-      () =>
-        tasks.createTask(db, manager(db), {
-          ...anyPlacement(db),
-          title: 'Outcome for a day the task does not cover',
-          effortDays: 5,
-          reviewerId: manager(db).id,
-          ownerId: employee1(db).id,
-          priority: 'P2',
-          startDate: workStart(),
-          scheduledDays: 2,
-          dayPlans: [
-            { date: workDay(0), outcome: 'Bench set up.' },
-            { date: workDay(1), outcome: 'Run complete.' },
-            { date: workDay(2), outcome: 'A day that is not part of this task.' },
-          ],
-        }),
-      (error: unknown) =>
-        error instanceof AppError && error.details.some((d) => /outside the task/.test(d.message)),
-    );
-  });
-
-  test('a single-day task needs no day outcomes', () => {
-    const created = tasks.createTask(db, manager(db), {
+  test('a single-day task is created without ceremony', () => {
+    tasks.createTask(db, manager(db), {
       ...anyPlacement(db),
       title: 'One day, one outcome \u2014 the task itself',
       effortDays: 5,
@@ -291,7 +201,6 @@ describe('task creation', () => {
       startDate: today(),
       scheduledDays: 1,
     });
-    assert.deepEqual(created.dayPlans, []);
   });
 
   test('an unknown owner is rejected', () => {
@@ -660,37 +569,24 @@ describe('deadline change requests', () => {
     );
   });
 
-  test('approving an extension leaves the new days owing an outcome', () => {
+  test('approving an extension moves the deadline with the budget', () => {
     const task = taskByRef(db, 'WA-SW-006');
     assert.ok(task?.dueDate && task.startDate);
-    // One day today, three days once the extension lands.
-    assert.deepEqual(task.dayPlans, []);
+    const asked = (task.effortDays ?? 1) + 2;
 
     const request = tasks.requestDeadlineChange(db, employee3(db), task.id, {
-      requestedEffortDays: (task.effortDays ?? 1) + 2,
+      requestedEffortDays: asked,
       reason: 'Schema freeze slipped.',
     });
     tasks.decideDeadlineChange(db, manager(db), request.id, { approve: true });
 
     const stretched = tasks.getTask(db, manager(db), task.id);
-    const gap = stretched.clarifications.find(
-      (c) => c.code === ClarificationCode.MissingDayOutcomes,
-    );
-    assert.ok(gap && !gap.resolved, 'the two new days should be flagged, not invented');
-
-    // The dates are locked, but the outcomes owed for the new days are not:
-    // otherwise the extension would open a gap with no way to close it.
-    tasks.updateTask(db, manager(db), task.id, {
-      dayPlans: [
-        { date: stretched.startDate as string, outcome: 'Schema mapped.' },
-        { date: addDays(stretched.startDate as string, 1), outcome: 'Migration run on a copy.' },
-        { date: addDays(stretched.startDate as string, 2), outcome: 'Cutover completed.' },
-      ],
-    });
-    const settled = tasks.getTask(db, manager(db), task.id);
-    assert.equal(settled.dayPlans.length, 3);
+    assert.equal(stretched.effortDays, asked);
+    assert.equal(stretched.dueDate, workingDayDeadline(task.startDate as string, asked));
+    // Nothing is owed day by day: the owner reports what each day produced.
     assert.ok(
-      settled.clarifications.find((c) => c.code === ClarificationCode.MissingDayOutcomes)?.resolved,
+      !stretched.clarifications.some((c) => c.code.startsWith('MISSING_DAY')),
+      'there is no up-front day plan to leave a gap in',
     );
   });
 

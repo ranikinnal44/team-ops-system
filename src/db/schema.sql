@@ -193,29 +193,11 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status    ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due       ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_schedule  ON tasks(schedule_state);
 
--- Per-day outcomes for a multi-day task.
---
--- A task may span at most a few calendar days, and when it spans more than one
--- the person adding it has to say what each day is meant to produce — so a
--- two-day task is two checkable outcomes, not one vague block of time. One row
--- per calendar day in [start_date, due_date]; a single-day task needs none.
---
--- The span limit itself is enforced in the service layer, not here: imported
--- records carry whatever their source said and must not be rejected at write.
-CREATE TABLE IF NOT EXISTS task_day_plans (
-  task_id  TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  day_date TEXT NOT NULL,
-  outcome  TEXT NOT NULL,
-  PRIMARY KEY (task_id, day_date)
-);
-CREATE INDEX IF NOT EXISTS idx_task_day_plans_date ON task_day_plans(day_date);
-
 -- What a day ACTUALLY produced, written by the person doing the work.
 --
--- `task_day_plans` is the commitment; this is the report against it. They are
--- deliberately separate tables: the plan is authored once by whoever scheduled
--- the task, the log accumulates daily from whoever is doing it, and a day that
--- was never planned can still be reported on.
+-- Nobody plans a task day by day any more: a Task Assigner budgets the effort
+-- and the owner reports what each day produced as they go. This table is the
+-- whole of that record.
 --
 -- One row per person per task per calendar day. Re-submitting the same day
 -- replaces that day's entry rather than appending a second one, so "today's

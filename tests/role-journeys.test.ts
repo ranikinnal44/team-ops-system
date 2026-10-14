@@ -15,7 +15,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDb, startTestServer, loginAs, type TestServer } from './helpers.ts';
-import { workingDayDeadline, addDays, todayDate, isWeekend } from '../src/lib/dates.ts';
+import { workingDayDeadline, addDays, todayDate } from '../src/lib/dates.ts';
 
 /**
  * The first Monday strictly after today.
@@ -115,19 +115,12 @@ const getTask = async (cast: Cast, token: string, id: string) =>
   cast.server.request('GET', `/api/tasks/${id}`, { token });
 
 /** Three consecutive working days starting next Monday, each with an outcome. */
-function threeDaySchedule(): {
-  startDate: string;
-  effortDays: number;
-  dayPlans: { date: string; outcome: string }[];
-} {
+function threeDaySchedule(): { startDate: string; effortDays: number } {
   const start = nextMonday();
-  const days = [start, addDays(start, 1), addDays(start, 2)];
-  assert.ok(days.every((d) => !isWeekend(d)), 'Monday to Wednesday should contain no weekend');
   return {
-    startDate: days[0] as string,
+    startDate: start,
     // The deadline is derived from this; no due date is supplied anywhere.
     effortDays: 3,
-    dayPlans: days.map((date, i) => ({ date, outcome: `Day ${i + 1}: latch rig step ${i + 1}` })),
   };
 }
 
@@ -195,17 +188,6 @@ describe('the happy path, one task, three roles', () => {
     assert.equal(set.body.startDate, schedule.startDate);
     // Derived, never typed — and counted in working days.
     assert.equal(set.body.dueDate, workingDayDeadline(schedule.startDate, schedule.effortDays));
-  });
-
-  test('a multi-day proposal must say what each day delivers', async () => {
-    const other = await newTask(cast, { ownerId: cast.ids.owner });
-    const { startDate, effortDays } = threeDaySchedule();
-    const refused = await cast.server.request('POST', `/api/tasks/${other.id}/schedule`, {
-      token: cast.owner,
-      body: { startDate, effortDays },
-    });
-    assert.equal(refused.status, 400);
-    assert.match(refused.body.error.message, /what each day delivers/i);
   });
 
   test('an uninvolved employee cannot schedule somebody else’s task', async () => {

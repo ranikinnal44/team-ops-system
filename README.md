@@ -179,7 +179,6 @@ users ─────────┬──< projects(lead) ──< workstreams �
                ├──< deadline_change_requests ──> tasks
                └──< sessions
 
-tasks ──< task_day_plans                       (one row per day of a multi-day task)
 tasks ──< task_day_logs                        (what each day actually produced)
 tasks ──< task_dependencies >── tasks          (self-referencing, acyclic)
 tasks ──< task_external_links                  (Layer 2+, unused today)
@@ -193,7 +192,6 @@ projects ──  task_ref_sequences                (per-project ref counter)
 | `projects` / `workstreams` / `milestones` / `deliverables` | The hierarchy |
 | `tasks` | Every actionable item — see below |
 | `task_supporters` | Supporting members (the single owner stays on `tasks`) |
-| `task_day_plans` | What each day of a multi-day task delivers |
 | `task_day_logs` | What each day actually produced, reported by whoever did the work |
 | `task_dependencies` | "must land before"; cycle-checked in the service layer |
 | `task_ref_sequences` | Per-project counter behind `AD-MAN-001` |
@@ -246,17 +244,11 @@ enforce one definition rather than three drifting copies.
    approving it raises `effort_days` and the deadline moves with it, while
    `original_effort_days` and `original_due_date` keep the first estimate so slippage against
    it stays readable. A Task Assigner or the task's reviewer decides.
-6. **Every working day of a multi-day task states its outcome.** A two-day task is two
-   checkable outcomes, not one vague block of time — one row per *working* day in
-   `[start_date, due_date]`, stored in `task_day_plans`. Asking what Saturday delivers is
-   asking somebody to invent something. A single-day task needs none: the task is its own
-   outcome.
-
-Day outcomes are deliberately **not** locked with the dates. They say what each agreed day
-delivers rather than when the work happens, and an approved extension leaves new days owing
-one; sealing them would open a gap with no way to close it. Rescheduling keeps the outcomes
-still inside the new dates and raises `MISSING_DAY_OUTCOMES` for the rest rather than inventing
-text for them.
+6. **Nobody plans the days up front.** Whoever assigns a task budgets the effort and names
+   the outcome; what each day produces is reported by the person doing it, as they do it, in
+   `task_day_logs`. A plan written by somebody else about days they will not work is a guess
+   dressed as a commitment — and keeping it in step with every reschedule cost more than it
+   was worth.
 
 **Dates live on tasks and nowhere else.** A milestone has no `start_date`, `end_date` or
 `target_date` at all — only `timeline_label`, the plan's own relative wording such as
@@ -501,7 +493,7 @@ Coverage maps to the Phase 4 checklist:
 | --- | --- |
 | Role permissions | `permissions.test.ts`, plus HTTP 403s in `api.test.ts` |
 | Task creation | `task-service.test.ts` — refs, uniqueness, validation |
-| Scheduling rules | `task-service.test.ts` — required dates, the 3-day ceiling, per-day outcomes |
+| Scheduling rules | `task-service.test.ts` — derived deadlines, the working-day cap, the budget ceiling |
 | Assignment | reassignment test + the history entry naming both people |
 | Status transitions | all 7 legal and 7 illegal moves |
 | Deadline calculations | `dates.test.ts`, `original_due_date` preservation |
@@ -543,7 +535,7 @@ reviewer confirms what people commit to, a member does it.
   and evidence links; propose their dates; request a deadline change; mark ready for review.
 - A reviewer writes no more of a task than a member does, and **cannot** create projects,
   workstreams, milestones or tasks, reassign work, bulk-assign or manage the team.
-- Members **cannot** change owner, project, milestone, priority, dates or day outcomes. The
+- Members **cannot** change owner, project, milestone, priority or the effort budget. The
   attempt is refused with a message pointing at the deadline-request flow.
 
 Being a reviewer on a task and holding the reviewer *role* are still separate things: any
@@ -556,8 +548,8 @@ Task-Assigner-only `Completed → In Progress` reopen (documented below). Comple
 blocker description — otherwise "what is blocked" would be a list without reasons.
 
 **Daily outcome log** — a member doing the work reports what each day produced into
-`task_day_logs`, the counterpart to the `task_day_plans` that say what it was meant to
-produce. One entry per person per day; re-submitting a day replaces it. Progress and
+`task_day_logs`. It is the whole of the day-by-day record: nobody writes a plan for those
+days in advance. One entry per person per day; re-submitting a day replaces it. Progress and
 blockers raised there land on the task itself, so there is one number, not two that can
 disagree. Only the owner and supporting members may write one, and only while the task is
 in progress or blocked — a Task Assigner writing someone else's daily report is not accountability.

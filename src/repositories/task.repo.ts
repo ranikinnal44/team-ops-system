@@ -3,7 +3,7 @@
  */
 import type { Database } from '../db/connection.ts';
 import { toText } from '../db/connection.ts';
-import type { Task, TaskContext, TaskDayPlan } from '../domain/types.ts';
+import type { Task, TaskContext } from '../domain/types.ts';
 import type { TaskStatus, Priority, Origin, ScheduleState } from '../domain/enums.ts';
 import { newId } from '../lib/ids.ts';
 import { nowTimestamp, type IsoDate, type IsoTimestamp } from '../lib/dates.ts';
@@ -93,7 +93,6 @@ function mapTask(
   row: TaskRow & ContextRow,
   supporters: readonly string[],
   dependencies: readonly string[],
-  dayPlans: readonly TaskDayPlan[],
 ): TaskWithContext {
   return {
     id: row.id,
@@ -136,7 +135,6 @@ function mapTask(
     completedAt: toText(row.completed_at),
     supportingMemberIds: supporters,
     dependencyTaskIds: dependencies,
-    dayPlans,
     projectId: row.project_id,
     projectCode: row.project_code,
     projectName: row.project_name,
@@ -158,12 +156,10 @@ function loadRelations(
 ): {
   supporters: Map<string, string[]>;
   dependencies: Map<string, string[]>;
-  dayPlans: Map<string, TaskDayPlan[]>;
 } {
   const supporters = new Map<string, string[]>();
   const dependencies = new Map<string, string[]>();
-  const dayPlans = new Map<string, TaskDayPlan[]>();
-  if (taskIds.length === 0) return { supporters, dependencies, dayPlans };
+  if (taskIds.length === 0) return { supporters, dependencies };
 
   const placeholders = taskIds.map(() => '?').join(', ');
   const supportRows = db
@@ -191,30 +187,18 @@ function loadRelations(
     dependencies.set(row.task_id, list);
   }
 
-  const planRows = db
-    .prepare(
-      `SELECT task_id, day_date, outcome FROM task_day_plans
-       WHERE task_id IN (${placeholders}) ORDER BY day_date`,
-    )
-    .all(...taskIds) as { task_id: string; day_date: string; outcome: string }[];
-  for (const row of planRows) {
-    const list = dayPlans.get(row.task_id) ?? [];
-    list.push({ date: row.day_date, outcome: row.outcome });
-    dayPlans.set(row.task_id, list);
-  }
 
-  return { supporters, dependencies, dayPlans };
+  return { supporters, dependencies };
 }
 
 function hydrate(db: Database, rows: (TaskRow & ContextRow)[]): TaskWithContext[] {
   const ids = rows.map((r) => r.id);
-  const { supporters, dependencies, dayPlans } = loadRelations(db, ids);
+  const { supporters, dependencies } = loadRelations(db, ids);
   return rows.map((row) =>
     mapTask(
       row,
       supporters.get(row.id) ?? [],
       dependencies.get(row.id) ?? [],
-      dayPlans.get(row.id) ?? [],
     ),
   );
 }
@@ -266,7 +250,6 @@ export type NewTaskRecord = {
   supportingMemberIds: readonly string[];
   dependencyTaskIds: readonly string[];
   /** Omitted by importers: a source record states no per-day breakdown. */
-  dayPlans?: readonly TaskDayPlan[];
 };
 
 export function insertTask(db: Database, input: NewTaskRecord): string {
@@ -326,7 +309,6 @@ export function insertTask(db: Database, input: NewTaskRecord): string {
   );
   replaceSupporters(db, id, input.supportingMemberIds);
   replaceDependencies(db, id, input.dependencyTaskIds);
-  replaceDayPlans(db, id, input.dayPlans ?? []);
   return id;
 }
 
@@ -346,31 +328,7 @@ export function replaceDependencies(db: Database, taskId: string, dependsOn: rea
   }
 }
 
-/** Replace the whole per-day plan in one go — the service always sends the
- * complete set for the task's current dates, never a partial patch. */
-export function replaceDayPlans(
-  db: Database,
-  taskId: string,
-  plans: readonly TaskDayPlan[],
-): void {
-  db.prepare('DELETE FROM task_day_plans WHERE task_id = ?').run(taskId);
-  const stmt = db.prepare(
-    'INSERT INTO task_day_plans (task_id, day_date, outcome) VALUES (?, ?, ?)',
-  );
-  for (const plan of plans) stmt.run(taskId, plan.date, plan.outcome);
-}
 
-/** Drop any day outcome that no longer falls inside the task's dates. */
-export function pruneDayPlansOutside(
-  db: Database,
-  taskId: string,
-  start: IsoDate,
-  due: IsoDate,
-): void {
-  db.prepare(
-    'DELETE FROM task_day_plans WHERE task_id = ? AND (day_date < ? OR day_date > ?)',
-  ).run(taskId, start, due);
-}
 
 /** Columns the service layer may write, mapped to their SQL column names. */
 const COLUMN_BY_FIELD: Record<string, string> = {
