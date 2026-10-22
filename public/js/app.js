@@ -12,7 +12,7 @@ import { employeeView } from './views/employee.js';
 import { taskListView } from './views/task-list.js';
 import { taskDetailView } from './views/task-detail.js';
 import { createTaskView } from './views/create-task.js';
-import { ACCESS, canOpen } from './access.js';
+import { ACCESS, canOpen, isTaskAssigner } from './access.js';
 import { milestonesView } from './views/milestones.js';
 import { activityView } from './views/activity.js';
 import { planView } from './views/plan.js';
@@ -22,14 +22,14 @@ const app = document.getElementById('app');
 
 const ROUTES = [
   { pattern: /^\/login$/, view: loginView, chrome: false },
-  { pattern: /^\/manager$/, view: managerView, access: ACCESS.manager },
+  { pattern: /^\/manager$/, view: managerView, access: ACCESS.assigner },
   { pattern: /^\/my-work$/, view: employeeView },
   { pattern: /^\/tasks\/new$/, view: createTaskView, access: ACCESS.assigner },
   { pattern: /^\/tasks\/([^/]+)$/, view: taskDetailView },
   { pattern: /^\/tasks$/, view: taskListView },
-  { pattern: /^\/plan$/, view: planView, access: ACCESS.manager },
+  { pattern: /^\/plan$/, view: planView, access: ACCESS.assigner },
   { pattern: /^\/milestones$/, view: milestonesView },
-  { pattern: /^\/team$/, view: teamView, access: ACCESS.manager },
+  { pattern: /^\/team$/, view: teamView, access: ACCESS.assigner },
   { pattern: /^\/activity$/, view: activityView },
 ];
 
@@ -41,7 +41,7 @@ function parseHash() {
 
 function chrome(activePath) {
   const user = session.user;
-  const isManager = user?.role === 'manager';
+  const isManager = isTaskAssigner(user?.role);
   // A reviewer sees the whole board, so the dashboard is theirs too — they
   // just cannot change the plan behind it.
   const seesAll = isManager || user?.role === 'reviewer';

@@ -25,7 +25,6 @@ import type {
 import {
   TaskStatus,
   Priority,
-  Role,
   HistoryKind,
   STATUS_LABEL,
   PRIORITY_LABEL,
@@ -48,6 +47,7 @@ import {
   assertCanWriteTaskFields,
   type TaskField,
   seesAllWork,
+  isTaskAssigner,
 } from '../domain/permissions.ts';
 import { evaluateTask, attentionScore, type RuleThresholds } from '../domain/exceptions.ts';
 import {
@@ -469,8 +469,9 @@ export function updateTask(
 ): TaskView {
   const task = taskRepo.findTaskById(db, taskId) ?? taskRepo.findTaskByRef(db, taskId);
   if (!task) throw notFound('Task');
+  assertCanUpdateTask(actor.role, task, actor.id);
+
   const { comment, expectedLastUpdatedAt, ...fields } = input;
-  assertCanUpdateTask(actor.role, task, actor.id, Object.keys(fields));
 
   // Two people with the same task open: without this the second save silently
   // erases the first, and nobody finds out until somebody asks where their
@@ -1018,7 +1019,7 @@ export function requestDeadlineChange(
   const task = taskRepo.findTaskById(db, taskId);
   if (!task) throw notFound('Task');
   assertCanViewTask(actor.role, task, actor.id);
-  if (task.ownerId !== actor.id && actor.role !== Role.Manager) {
+  if (task.ownerId !== actor.id && !isTaskAssigner(actor.role)) {
     throw forbidden('Only the task owner can ask for more time.');
   }
   if (task.effortDays === null) {
@@ -1098,16 +1099,6 @@ export function decideDeadlineChange(
   if (request.status !== DeadlineRequestStatus.Pending) {
     throw conflict('This request has already been decided.');
   }
-  // A reviewer decides the tasks they were named on, and only those: the
-  // authority follows the accountability. A Task Assigner answers for the whole
-  // plan, so theirs is not narrowed.
-  if (actor.role === Role.Reviewer) {
-    const subject = taskRepo.findTaskById(db, request.taskId);
-    if (!subject || subject.reviewerId !== actor.id) {
-      throw forbidden('You can only decide requests on tasks you are the reviewer of.');
-    }
-  }
-
   return transaction(db, () => {
     const timestamp = nowTimestamp(now);
     deadlineRepo.decideDeadlineRequest(db, {
@@ -1352,7 +1343,7 @@ export function proposeSchedule(
   if (!task) throw notFound('Task');
   assertCanViewTask(actor.role, task, actor.id);
 
-  if (task.ownerId !== actor.id && actor.role !== Role.Manager) {
+  if (task.ownerId !== actor.id && !isTaskAssigner(actor.role)) {
     throw forbidden('Only the task owner can propose its dates — they are the commitment.');
   }
   if (task.scheduleState === ScheduleState.Locked) {

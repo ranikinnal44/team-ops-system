@@ -1,15 +1,19 @@
 /**
- * Who may open a screen.
+ * Who may open a screen, and who counts as a Task Assigner.
+ *
+ * A reviewer has every power a Task Assigner has; the roles differ in what
+ * each is expected to do, not in what the system allows. Every "may this
+ * person plan, assign or manage?" question goes through `isTaskAssigner`, so
+ * the two cannot drift apart.
  *
  * Kept apart from the router so it can be checked against the server's own
  * capabilities: a screen the server allows but the router bars sends people
- * back to My work with no explanation, which is what a reviewer saw when
- * "+ New task" was added for them but this table was not.
+ * back to My work with no explanation.
  */
+export const isTaskAssigner = (role) => role === 'manager' || role === 'reviewer';
+
 export const ACCESS = {
-  /** Plan, Team, the roster. */
-  manager: ['manager'],
-  /** Creating and assigning tasks: a Task Assigner or a reviewer. */
+  /** Plan, Team, the Dashboard, creating tasks. */
   assigner: ['manager', 'reviewer'],
 };
 

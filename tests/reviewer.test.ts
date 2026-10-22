@@ -206,7 +206,7 @@ describe('the reviewer role', () => {
     );
   });
 
-  test('is refused on a task somebody else reviews', () => {
+  test('can decide a request on a task somebody else reviews, like a Task Assigner', () => {
     // Named reviewer is employee2, not Dana.
     const task = newTask(db);
     assert.ok(task.dueDate);
@@ -215,12 +215,8 @@ describe('the reviewer role', () => {
       reason: 'Same rig.',
     });
 
-    assert.throws(
-      () => tasks.decideDeadlineChange(db, reviewer, request.id, { approve: true }),
-      (e: { code?: string }) => e.code === ErrorCode.FORBIDDEN,
-      'the authority follows the accountability',
-    );
-    assert.equal(tasks.getTask(db, manager(db), task.id).dueDate, task.dueDate);
+    const decided = tasks.decideDeadlineChange(db, reviewer, request.id, { approve: false });
+    assert.equal(decided.status, 'rejected');
   });
 
   test('can create a task and hand it to somebody', () => {

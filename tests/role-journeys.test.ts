@@ -282,15 +282,15 @@ describe('the happy path, one task, three roles', () => {
     assert.equal(done.body.progress, 100);
   });
 
-  test('reopening finished work is reserved for a manager', async () => {
+  test('reopening finished work is reserved for a Task Assigner or a reviewer, not the owner', async () => {
     const refused = await cast.server.request('PATCH', `/api/tasks/${taskId}`, {
-      token: cast.reviewer,
+      token: cast.owner,
       body: { status: 'in_progress' },
     });
     assert.equal(refused.status, 422);
 
     const reopened = await cast.server.request('PATCH', `/api/tasks/${taskId}`, {
-      token: cast.manager,
+      token: cast.reviewer,
       body: { status: 'in_progress' },
     });
     assert.equal(reopened.status, 200);
@@ -471,7 +471,7 @@ describe('asking for more time, from all three sides', () => {
     assert.equal(second.status, 409);
   });
 
-  test('a reviewer cannot decide a request on a task somebody else reviews', async () => {
+  test('a reviewer can decide a request on a task somebody else reviews, like a Task Assigner', async () => {
     // A second task, reviewed by the manager rather than by our reviewer.
     const foreign = await newTask(cast, {
       ownerId: cast.ids.owner,
@@ -492,13 +492,12 @@ describe('asking for more time, from all three sides', () => {
     });
     assert.equal(asked.status, 201);
 
-    const refused = await cast.server.request(
+    const decided = await cast.server.request(
       'POST',
       `/api/deadline-requests/${asked.body.id}/decision`,
-      { token: cast.reviewer, body: { approve: true } },
+      { token: cast.reviewer, body: { approve: false } },
     );
-    assert.equal(refused.status, 403);
-    assert.match(refused.body.error.message, /reviewer of/i);
+    assert.equal(decided.status, 200, JSON.stringify(decided.body));
   });
 
   test('the task’s own reviewer approves it, and the original date stays on record', async () => {
@@ -569,49 +568,32 @@ describe('what each role can reach', () => {
     );
   });
 
-  // Creating and assigning tasks belongs to a manager and a reviewer; an
-  // employee is refused. Shaping the plan and the team is the manager's alone.
-  const assignment: [string, string, unknown][] = [
+  // A reviewer has the same access as a Task Assigner; an employee has none of it.
+  const taskAssignerOnly: [string, string, unknown][] = [
     ['POST', '/api/tasks', { workstreamId: 'x', title: 'x', reviewerId: 'x', effortDays: 1 }],
     ['POST', '/api/tasks/bulk-assign', { taskIds: ['x'], ownerId: 'y' }],
-  ];
-  const managerOnly: [string, string, unknown][] = [
     ['POST', '/api/projects', { name: 'Shadow project' }],
     ['POST', '/api/team', { name: 'X', email: 'x@y.z', role: 'employee', passcode: 'abcdef' }],
   ];
 
-  for (const [method, path, body] of [...assignment, ...managerOnly]) {
+  for (const [method, path, body] of taskAssignerOnly) {
     test(`an employee is refused ${method} ${path}`, async () => {
       const refused = await cast.server.request(method, path, { token: cast.owner, body });
       assert.equal(refused.status, 403, JSON.stringify(refused.body));
     });
-  }
 
-  for (const [method, path, body] of managerOnly) {
-    test(`a reviewer is refused ${method} ${path} — they do not shape the plan or the team`, async () => {
-      const refused = await cast.server.request(method, path, { token: cast.reviewer, body });
-      assert.equal(refused.status, 403, JSON.stringify(refused.body));
-    });
-  }
-
-  for (const [method, path, body] of assignment) {
     test(`a reviewer is not refused ${method} ${path} on role grounds`, async () => {
-      // The body is deliberately invalid: what is checked is that the answer
-      // is a validation or lookup failure, never a 403 for the role.
+      // The body is deliberately invalid or incomplete: what is checked is that
+      // the answer is a validation or lookup failure, never a 403 for the role.
       const answer = await cast.server.request(method, path, { token: cast.reviewer, body });
       assert.notEqual(answer.status, 403, JSON.stringify(answer.body));
     });
   }
 
-  test('the people picker gives a reviewer names only, and a manager the roster', async () => {
+  test('the roster is open to the reviewer and closed to the employee', async () => {
     const asReviewer = await cast.server.request('GET', '/api/users', { token: cast.reviewer });
     assert.equal(asReviewer.status, 200);
-    assert.ok(asReviewer.body.length > 0);
-    for (const person of asReviewer.body) {
-      assert.deepEqual(Object.keys(person).sort(), ['id', 'name'], 'no email, no role');
-    }
-    const asManager = await cast.server.request('GET', '/api/users', { token: cast.manager });
-    assert.ok('email' in asManager.body[0] && 'role' in asManager.body[0]);
+    assert.ok('email' in asReviewer.body[0] && 'role' in asReviewer.body[0]);
     const asEmployee = await cast.server.request('GET', '/api/users', { token: cast.owner });
     assert.equal(asEmployee.status, 403);
   });
@@ -624,21 +606,15 @@ describe('what each role can reach', () => {
     assert.equal(asEmployee.status, 403);
   });
 
-  test('a reviewer may assign a task but not reschedule or rewrite it', async () => {
+  test('a reviewer writes every field a Task Assigner does', async () => {
     const { id } = await newTask(cast, { ownerId: cast.ids.owner });
-    for (const field of ['title', 'effortDays', 'dueDate', 'startDate', 'description'] as const) {
-      const value = field === 'effortDays' ? 2 : field === 'dueDate' || field === 'startDate' ? '2030-01-07' : 'x';
-      const refused = await cast.server.request('PATCH', `/api/tasks/${id}`, {
+    for (const [field, value] of [['title', 'Renamed by the reviewer'], ['priority', 'P0'], ['description', 'x']] as const) {
+      const answer = await cast.server.request('PATCH', `/api/tasks/${id}`, {
         token: cast.reviewer,
         body: { [field]: value },
       });
-      assert.equal(refused.status, 403, `a reviewer should not be able to write ${field}`);
+      assert.equal(answer.status, 200, `a reviewer should be able to write ${field}: ${JSON.stringify(answer.body)}`);
     }
-    const assigned = await cast.server.request('PATCH', `/api/tasks/${id}`, {
-      token: cast.reviewer,
-      body: { priority: 'P0' },
-    });
-    assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
   });
 
   test('a mixed payload is refused as a whole, not partly applied', async () => {

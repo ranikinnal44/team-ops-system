@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { Role } from '../src/domain/enums.ts';
 import { Capability, can } from '../src/domain/permissions.ts';
 // @ts-expect-error — plain browser module, no type declarations
-import { ACCESS, canOpen } from '../public/js/access.js';
+import { ACCESS, canOpen, isTaskAssigner } from '../public/js/access.js';
 
 const ROLES = [Role.Manager, Role.Reviewer, Role.Employee];
 
@@ -27,9 +27,17 @@ describe('who may open a screen', () => {
     }
   });
 
-  test('the plan and team screens stay with managers', () => {
+  test('the plan, team and dashboard screens open for the same roles as the capabilities behind them', () => {
     for (const role of ROLES) {
-      assert.equal(canOpen({ access: ACCESS.manager }, role), role === Role.Manager);
+      for (const capability of [Capability.CreateMilestone, Capability.ManageTeam, Capability.ViewTeamProgress]) {
+        assert.equal(canOpen({ access: ACCESS.assigner }, role), can(role, capability), `${role} / ${capability}`);
+      }
+    }
+  });
+
+  test('the browser and the server agree on who counts as a Task Assigner', () => {
+    for (const role of ROLES) {
+      assert.equal(isTaskAssigner(role), can(role, Capability.ManageTeam), role);
     }
   });
 

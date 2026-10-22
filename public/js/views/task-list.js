@@ -8,6 +8,7 @@
  * two quiet lines rather than one long bar.
  */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import {
   el, pageHead, select, loading, taskGroup, groupTasks, GROUP_KEYS, visibleTaskColumns,
   paintSelection, toast,
@@ -96,11 +97,10 @@ function legend(columns) {
 }
 
 export async function taskListView(mount, params) {
-  const isManager = session.user?.role === 'manager';
+  const isManager = isTaskAssigner(session.user?.role);
   // A reviewer is handed the whole board, so they get the same lenses onto it.
   const seesAll = isManager || session.user?.role === 'reviewer';
-  // Creating and assigning tasks belongs to a Task Assigner and to a reviewer.
-  const canAssign = seesAll;
+  const canAssign = isManager;
 
   const filters = {
     search: params.get('search') ?? '',

@@ -6,6 +6,7 @@
  * DOM, so what is on screen is always what the API actually stored.
  */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import {
   el, card, field, select, stat, pageHead, errorBox, toast, initials, roleLabel, emptyState,
 } from '../ui.js';
@@ -19,7 +20,7 @@ const ROLE_OPTIONS = [
 const roleBadge = (role) => el('span', { class: `badge role-${role}`, text: roleLabel(role) });
 
 export async function teamView(mount) {
-  const isManager = session.user?.role === 'manager';
+  const isManager = isTaskAssigner(session.user?.role);
   // The router keeps other roles out, but a pasted link should not render a
   // half-page and then fail on the fetch.
   if (!isManager) {
@@ -77,7 +78,7 @@ export async function teamView(mount) {
       errors,
       el('div', { class: 'grid-2' }, field('Name', name), field('Email', email, 'Used to sign in. Must be unique.')),
       el('div', { class: 'grid-2' },
-        field('Role', role, 'Task Assigners plan the work; reviewers can also create and assign tasks, confirm dates and sign off what is done.'),
+        field('Role', role, 'Task Assigners and reviewers have the same access. Task Assigners plan the work; reviewers confirm dates and sign off what is done.'),
         field('Designation', title, 'Optional — what they do on the team.')),
       field('Passcode', passcode,
         'Theirs alone, and how they sign in. Tell it to them — nobody can read it back afterwards, ' +

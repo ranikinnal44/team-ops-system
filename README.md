@@ -525,19 +525,16 @@ reviewer confirms what people commit to, a member does it.
 - *Task Assigner*: create projects, workstreams, milestones, deliverables and tasks; assign owners;
   set priorities and effort budgets; reassign; change status; view all tasks; view overdue,
   blocked, stale and upcoming; review team-level progress; decide deadline requests.
-- *Reviewer*: create tasks and assign them (owner, reviewer, supporting members, priority —
-  singly or in bulk), confirm the dates an owner proposes, sign off work submitted for review, and
-  decide deadline-change requests — **on the tasks they are named the reviewer of, and only
-  those**. The authority follows the accountability: one named person answers for each task's
-  review. They read the whole board, including the team's load, because they cannot confirm
-  what they cannot find.
+- *Reviewer*: **everything a Task Assigner can do** — plan, assign, manage the team, decide
+  deadline requests — with sign-off on the tasks they are named the reviewer of as their
+  particular job. The two roles differ in name and in what each is expected to do, not in what the
+  system allows; both are checked through one rule, `isTaskAssigner`, on the server and in the
+  browser.
 - *Member*: see only tasks they own, support or review; today / upcoming / overdue / blocked /
   awaiting review / recently completed; update status, progress, blocker, next action, comments
   and evidence links; propose their dates; request a deadline change; mark ready for review.
-- A reviewer writes what a member does plus the assignment fields (owner, reviewer, supporting
-  members, priority), and **cannot** create projects, workstreams or milestones, change a task's
-  dates, effort, title or description, or manage the team. For the people picker they are served
-  names only, never the roster's emails and roles.
+- Because a reviewer has full Task Assigner access, they can also reset passcodes and change
+  roles. The last active Task Assigner or reviewer cannot be demoted or deactivated.
 - Members **cannot** change owner, project, milestone, priority or the effort budget. The
   attempt is refused with a message pointing at the deadline-request flow.
 

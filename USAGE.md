@@ -66,14 +66,13 @@ builds the plan and adds everyone else.
 | **Dashboard** — the whole team's exceptions | yes | yes | — |
 | **My work** — your own queue | yes | yes | yes |
 | **Tasks** — searchable list, with review lenses | everything | everything | your tasks only |
-| **Plan** — build the project structure | yes | — | — |
+| **Plan** — build the project structure | yes | yes | — |
 | **Milestones** — the plan as a timeline | yes | yes | yes |
-| **Team** — the roster | edit | read | read |
+| **Team** — the roster | edit | edit | read |
 | **Activity** — what changed recently | yes | yes | yes |
 
-A reviewer sees the whole board on purpose: you cannot review what you cannot find. A reviewer
-can also create tasks and assign them — owner, reviewer, supporting members and priority, one at
-a time or in bulk — but does not reschedule or rewrite a task, shape the plan, or manage the team.
+A reviewer has the same access as a Task Assigner: the two roles differ in what each is
+expected to do, not in what the system allows.
 
 ### Reading a task
 
@@ -376,12 +375,12 @@ decided it.
 
 ## 6. If you are a reviewer
 
-You confirm what other people commit to. You do not plan the project or do the work, but you
-can create tasks and assign them to people. Your sign-off authority is exercised through three
-decisions, on the tasks you are named on.
+You confirm what other people commit to, and you hold every permission a Task Assigner has:
+plan, assign, manage the team and decide extensions on any task. Your particular job is the
+three decisions below, on the tasks you are named on.
 
-You can see every task in the system, because you cannot review what you cannot find. You
-can edit no more of a task than a member can.
+You can see every task in the system, and you can edit tasks, assign them, and run the Plan and
+Team screens exactly as a Task Assigner can.
 
 ### Finding what is waiting on you
 
@@ -446,10 +445,8 @@ cannot withdraw it from Review to get around you.
 When an owner asks for more time on a task you review, approve or reject it. Approving
 moves the end date and raises the budget to match; the original date stays on record.
 
-You can only decide requests on tasks you are the reviewer of — the authority follows the
-accountability. A Task Assigner answers for the whole plan, so theirs is not narrowed. The
-dashboard shows all pending requests; if you try to decide one that is not yours, the
-system will say so.
+You can decide any pending request, like a Task Assigner. The dashboard shows all of them;
+the ones on tasks you are named the reviewer of are the ones that are yours to answer.
 
 ### Reviewing your own work
 
@@ -480,7 +477,6 @@ The refusals are the rules doing their job. The common ones:
 | *"These dates are not agreed yet, so there is nothing to extend."* | Propose the dates you need instead of requesting an extension. |
 | *"This task already has a change awaiting a decision."* | Wait for it to be decided; one at a time. |
 | *"That would make the task N working days; the cap is 5."* | Split the remaining work into a new task. |
-| *"You can only decide requests on tasks you are the reviewer of."* | A Task Assigner can decide it. |
 | *"X still owns N open task(s)."* | Reassign them before deactivating the account. |
 
 ---

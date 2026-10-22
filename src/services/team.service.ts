@@ -18,7 +18,7 @@ import * as userRepo from '../repositories/user.repo.ts';
 import * as taskRepo from '../repositories/task.repo.ts';
 import type { Actor, User } from '../domain/types.ts';
 import { Role, TaskStatus } from '../domain/enums.ts';
-import { Capability, assertCan } from '../domain/permissions.ts';
+import { Capability, assertCan, isTaskAssigner } from '../domain/permissions.ts';
 import { conflict, notFound, validationError } from '../lib/errors.ts';
 import { hashPasscode, passcodeProblem } from '../lib/passcode.ts';
 import * as authEventRepo from '../repositories/auth-event.repo.ts';
@@ -146,8 +146,8 @@ export function updateTeamMember(
   if (!user) throw notFound('Team member');
 
   const losingManager =
-    user.role === Role.Manager &&
-    ((patch.role !== undefined && patch.role !== Role.Manager) || patch.active === false);
+    isTaskAssigner(user.role) &&
+    ((patch.role !== undefined && !isTaskAssigner(patch.role)) || patch.active === false);
   if (losingManager) assertAnotherManagerRemains(db, user.id);
 
   if (patch.active === false) {
@@ -187,7 +187,7 @@ export function updateTeamMember(
 function assertAnotherManagerRemains(db: Database, excludingUserId: string): void {
   const others = userRepo
     .listUsers(db, { activeOnly: true })
-    .filter((u) => u.role === Role.Manager && u.id !== excludingUserId);
+    .filter((u) => isTaskAssigner(u.role) && u.id !== excludingUserId);
   if (others.length === 0) {
     throw conflict(
       'This is the only active Task Assigner. Promote someone else to Task Assigner first, ' +

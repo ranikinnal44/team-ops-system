@@ -58,23 +58,23 @@ const MANAGER_CAPABILITIES: readonly Capability[] = [
 const EMPLOYEE_CAPABILITIES: readonly Capability[] = [Capability.RequestDeadlineChange];
 
 /**
- * A reviewer decides, and may also hand work out: they can create tasks and
- * assign them (owner, reviewer, supporters, priority), singly or in bulk. What
- * they cannot do is shape the plan itself — no workstreams or milestones — or
- * manage the team, or touch the dates, effort and content of a task. They see
- * every task because they cannot review what they cannot find, and they may
- * own work of their own, which is why they keep the right to ask for an
- * extension like anyone else.
+ * A reviewer holds every capability a Task Assigner does: the roles differ in
+ * name and in what each is expected to do day to day, not in what the system
+ * will let them do. They also keep the right to ask for an extension, because
+ * they may own work of their own.
  */
 const REVIEWER_CAPABILITIES: readonly Capability[] = [
-  Capability.ViewAllTasks,
-  Capability.ViewTeamProgress,
-  Capability.DecideDeadlineRequest,
+  ...MANAGER_CAPABILITIES,
   Capability.RequestDeadlineChange,
-  Capability.CreateTask,
-  Capability.ReassignTask,
-  Capability.BulkAssignTasks,
 ];
+
+/**
+ * Whether a role carries Task Assigner powers: manager and reviewer both do.
+ * Every "is this a manager?" question that is really about what somebody may
+ * do goes through here, so the two cannot drift apart.
+ */
+export const isTaskAssigner = (role: Role): boolean =>
+  role === Role.Manager || role === Role.Reviewer;
 
 export const CAPABILITIES_BY_ROLE: Record<Role, readonly Capability[]> = {
   [Role.Manager]: MANAGER_CAPABILITIES,
@@ -88,8 +88,7 @@ export const CAPABILITIES_BY_ROLE: Record<Role, readonly Capability[]> = {
  * Read-only breadth, nothing more: a reviewer has to be able to find what is
  * waiting on them, which is not the same as being able to change it.
  */
-export const seesAllWork = (role: Role): boolean =>
-  role === Role.Manager || role === Role.Reviewer;
+export const seesAllWork = (role: Role): boolean => isTaskAssigner(role);
 
 export const can = (role: Role, capability: Capability): boolean =>
   CAPABILITIES_BY_ROLE[role].includes(capability);
@@ -132,25 +131,9 @@ export const MANAGER_WRITABLE_TASK_FIELDS = [
 
 export type TaskField = (typeof MANAGER_WRITABLE_TASK_FIELDS)[number];
 
-/**
- * The fields that amount to "who does this, and how urgent" — what somebody
- * who may assign tasks (a Task Assigner or a reviewer) can change on a task
- * they are otherwise not part of.
- */
-export const ASSIGNMENT_TASK_FIELDS: readonly TaskField[] = [
-  'ownerId',
-  'reviewerId',
-  'supportingMemberIds',
-  'priority',
-];
-
 export const WRITABLE_TASK_FIELDS_BY_ROLE: Record<Role, readonly TaskField[]> = {
   [Role.Manager]: MANAGER_WRITABLE_TASK_FIELDS,
-  // A reviewer writes what a member does, plus the assignment fields. Dates,
-  // effort and content stay with the Task Assigner: their authority over the
-  // schedule is exercised through the decisions — schedule, review,
-  // extension — not by editing the task underneath whoever owns it.
-  [Role.Reviewer]: [...EMPLOYEE_WRITABLE_TASK_FIELDS, ...ASSIGNMENT_TASK_FIELDS],
+  [Role.Reviewer]: MANAGER_WRITABLE_TASK_FIELDS,
   [Role.Employee]: EMPLOYEE_WRITABLE_TASK_FIELDS,
 };
 
@@ -205,31 +188,14 @@ export function assertCanViewTask(role: Role, task: TaskParticipants, userId: st
 /**
  * Updating is narrower than viewing: a supporting member or reviewer can see a
  * task, but only the owner (or a Task Assigner) drives its status and progress.
- *
- * Anybody who may assign tasks can also make an assignment-only change to a
- * task they are not part of — that is what assigning is — but nothing else on it.
  */
-export const canUpdateTask = (
-  role: Role,
-  task: TaskParticipants,
-  userId: string,
-  touchedFields?: readonly string[],
-): boolean =>
-  role === Role.Manager ||
+export const canUpdateTask = (role: Role, task: TaskParticipants, userId: string): boolean =>
+  isTaskAssigner(role) ||
   (task.ownerId !== null && task.ownerId === userId) ||
-  (task.reviewerId !== null && task.reviewerId === userId) ||
-  (can(role, Capability.ReassignTask) &&
-    touchedFields !== undefined &&
-    touchedFields.length > 0 &&
-    touchedFields.every((f) => (ASSIGNMENT_TASK_FIELDS as readonly string[]).includes(f)));
+  (task.reviewerId !== null && task.reviewerId === userId);
 
-export function assertCanUpdateTask(
-  role: Role,
-  task: TaskParticipants,
-  userId: string,
-  touchedFields?: readonly string[],
-): void {
-  if (!canUpdateTask(role, task, userId, touchedFields)) {
+export function assertCanUpdateTask(role: Role, task: TaskParticipants, userId: string): void {
+  if (!canUpdateTask(role, task, userId)) {
     throw forbidden('Only the task owner, its reviewer or a Task Assigner can update this task.');
   }
 }

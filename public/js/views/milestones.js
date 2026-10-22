@@ -13,6 +13,7 @@
  * exact payload to lay it out a second way, so it folded into this one.
  */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import {
   el, pageHead, stat, select, progressBar, formatDate, taskGroup, visibleTaskColumns,
   openClarifications,
@@ -268,7 +269,7 @@ function summaryLine(entry, totals, phase) {
 }
 
 export async function milestonesView(mount, params) {
-  const isManager = session.user?.role === 'manager';
+  const isManager = isTaskAssigner(session.user?.role);
   const projectId = await soleProjectId();
   if (projectId === null) {
     mount.replaceChildren(pageHead('Milestones', 'No project has been created yet.'));

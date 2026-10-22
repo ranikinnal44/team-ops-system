@@ -1,5 +1,6 @@
 /** Screen 6 — Create task. Task Assigners and reviewers. */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import {
   el,
   card,
@@ -14,7 +15,7 @@ import {
 } from '../ui.js';
 
 export async function createTaskView(mount) {
-  if (session.user?.role !== 'manager' && session.user?.role !== 'reviewer') {
+  if (!isTaskAssigner(session.user?.role)) {
     mount.replaceChildren(
       pageHead('Create task', 'Task Assigners and reviewers only'),
       card(null, el('div', { class: 'muted', text: 'Only a Task Assigner or a reviewer can create tasks. Ask one of them to add it.' })),

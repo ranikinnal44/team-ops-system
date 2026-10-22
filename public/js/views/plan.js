@@ -10,6 +10,7 @@
  * this screen just reports the reason.
  */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import { el, card, field, pageHead, emptyState, errorBox, toast, formatDate, loading } from '../ui.js';
 
 const CODE_HINT = '2–8 letters or digits, used in task references like AD-MEC-001.';
@@ -73,7 +74,7 @@ const confirmDelete = (what, run) => async () => {
 };
 
 export async function planView(mount) {
-  const isManager = session.user?.role === 'manager';
+  const isManager = isTaskAssigner(session.user?.role);
   if (!isManager) {
     mount.replaceChildren(
       pageHead('Plan', 'Task Assigners only'),

@@ -20,6 +20,7 @@
  */
 import { TaskStatus, STATUS_LABEL, Role } from './enums.ts';
 import { invalidTransition } from '../lib/errors.ts';
+import { isTaskAssigner } from './permissions.ts';
 
 export const TransitionAllow = {
   Participant: 'participant',
@@ -46,7 +47,7 @@ export type TransitionActor = {
 };
 
 export function satisfies(actor: TransitionActor, allow: TransitionAllow): boolean {
-  if (actor.role === Role.Manager) return true;
+  if (isTaskAssigner(actor.role)) return true;
   switch (allow) {
     case TransitionAllow.Participant:
       return true;

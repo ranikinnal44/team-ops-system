@@ -1,5 +1,6 @@
 /** Screen 2 — Task Assigner dashboard: summary, exceptions, people, upcoming. */
 import { api, session } from '../api.js';
+import { isTaskAssigner } from '../access.js';
 import {
   el, card, tightCard, listCard, exceptionSection, exceptionGrid, stat, taskRows, pageHead,
   formatDate, toast,
@@ -7,7 +8,7 @@ import {
 
 export async function managerView(mount) {
   // A reviewer reads this board too, so nothing on it may assume a manager.
-  const isManager = session.user?.role === 'manager';
+  const isManager = isTaskAssigner(session.user?.role);
   const board = await api.managerDashboard();
   const s = board.summary;
 
@@ -325,9 +326,7 @@ export async function managerView(mount) {
       `What is happening, what is late, what is blocked — as of ${formatDate(board.generatedFor)}`,
       // Creating work is a manager's. Offered to a reviewer it was a button
       // that bounced them to their own queue.
-      isManager || session.user?.role === 'reviewer'
-        ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' })
-        : null,
+      isManager ? el('a', { class: 'btn primary', href: '#/tasks/new', text: '+ New task' }) : null,
     ),
     summary,
     el('div', { style: 'height:16px' }),

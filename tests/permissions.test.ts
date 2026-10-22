@@ -21,42 +21,34 @@ const task = {
 };
 
 describe('capabilities', () => {
-  // Shaping the plan and the team: only a manager.
-  const managerOnly = [
+  // Planning the work, shaping the plan and managing the team: a Task
+  // Assigner, and a reviewer, who holds every capability a Task Assigner does.
+  const taskAssigner = [
     Capability.CreateProject,
+    Capability.CreateWorkstream,
     Capability.CreateMilestone,
+    Capability.CreateDeliverable,
+    Capability.CreateTask,
+    Capability.ReassignTask,
     Capability.ManageTeam,
+    Capability.ViewTeam,
+    Capability.ManageSupply,
+    Capability.BulkAssignTasks,
+    Capability.ViewAllTasks,
+    Capability.ViewTeamProgress,
+    Capability.DecideDeadlineRequest,
+    Capability.ResolveClarification,
   ];
 
-  for (const capability of managerOnly) {
-    test(`${capability} is manager-only`, () => {
+  for (const capability of taskAssigner) {
+    test(`${capability} belongs to managers and reviewers, not employees`, () => {
       assert.ok(can(Role.Manager, capability));
-      assert.ok(!can(Role.Reviewer, capability), 'a reviewer does not shape the plan or the team');
+      assert.ok(can(Role.Reviewer, capability), 'a reviewer has the same access as a Task Assigner');
       assert.ok(!can(Role.Employee, capability));
       assert.throws(
         () => assertCan(Role.Employee, capability),
         (error: unknown) => error instanceof AppError && error.code === ErrorCode.FORBIDDEN,
       );
-    });
-  }
-
-  // Judging the work: a reviewer needs the same reach as a manager, because
-  // they cannot confirm what they cannot see. And handing work out: creating
-  // tasks and assigning them, singly or in bulk.
-  const managerAndReviewer = [
-    Capability.ViewAllTasks,
-    Capability.ViewTeamProgress,
-    Capability.DecideDeadlineRequest,
-    Capability.CreateTask,
-    Capability.ReassignTask,
-    Capability.BulkAssignTasks,
-  ];
-
-  for (const capability of managerAndReviewer) {
-    test(`${capability} belongs to managers and reviewers`, () => {
-      assert.ok(can(Role.Manager, capability));
-      assert.ok(can(Role.Reviewer, capability));
-      assert.ok(!can(Role.Employee, capability));
     });
   }
 
@@ -68,25 +60,20 @@ describe('capabilities', () => {
     assert.ok(can(Role.Reviewer, Capability.RequestDeadlineChange));
   });
 
-  test('a reviewer may assign a task, but not reschedule or rewrite it', () => {
-    for (const field of ['ownerId', 'reviewerId', 'supportingMemberIds', 'priority'] as const) {
-      assert.ok(canWriteTaskField(Role.Reviewer, field), `${field} is part of assigning`);
-    }
-    for (const field of ['dueDate', 'startDate', 'effortDays', 'title', 'description', 'milestoneId'] as const) {
-      assert.ok(!canWriteTaskField(Role.Reviewer, field), `${field} is not a reviewer's to set`);
-    }
-    for (const field of ['status', 'progress', 'blocker'] as const) {
-      assert.ok(canWriteTaskField(Role.Reviewer, field));
+  test('a reviewer may write every field a Task Assigner may', () => {
+    for (const field of [
+      'ownerId', 'reviewerId', 'supportingMemberIds', 'priority', 'dueDate', 'startDate',
+      'effortDays', 'title', 'description', 'milestoneId', 'status', 'progress', 'blocker',
+    ] as const) {
+      assert.ok(canWriteTaskField(Role.Reviewer, field), `${field} is a Task Assigner's, and so a reviewer's`);
     }
   });
 
-  test('assigning reaches a task the reviewer is not part of, and nothing else on it does', () => {
+  test('a reviewer, like a Task Assigner, may update a task they are not part of; a member may not', () => {
     const stranger = 'someone-else';
-    assert.ok(canUpdateTask(Role.Reviewer, task, stranger, ['ownerId', 'priority']));
-    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger, ['ownerId', 'status']), 'a mixed payload is refused');
-    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger, ['status']));
-    assert.ok(!canUpdateTask(Role.Reviewer, task, stranger), 'with no fields named, nothing is granted');
-    assert.ok(!canUpdateTask(Role.Employee, task, stranger, ['ownerId']), 'a member cannot assign');
+    assert.ok(canUpdateTask(Role.Reviewer, task, stranger));
+    assert.ok(canUpdateTask(Role.Manager, task, stranger));
+    assert.ok(!canUpdateTask(Role.Employee, task, stranger));
   });
 });
 

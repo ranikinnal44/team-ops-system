@@ -157,6 +157,26 @@ describe('team service', () => {
     assert.equal(userRepo.findUserById(db, deputy.id)?.role, Role.Manager);
   });
 
+  test('a reviewer counts as a Task Assigner, so the last manager may step down once one exists', () => {
+    const boss = manager(db);
+    const reviewer = team.addTeamMember(db, boss, {
+      name: 'Deputy reviewer',
+      email: 'deputy-reviewer@example.com',
+      role: Role.Reviewer,
+      passcode: 'test-passcode',
+    });
+    // The reviewer can run the team, so nobody is locked out by this.
+    const demoted = team.updateTeamMember(db, boss, boss.id, { role: Role.Employee });
+    assert.equal(demoted.role, Role.Employee);
+
+    // But now the reviewer is the only Task Assigner left, and is protected.
+    const actor = { id: reviewer.id, name: reviewer.name, role: reviewer.role };
+    assert.throws(
+      () => team.updateTeamMember(db, actor, reviewer.id, { role: Role.Employee }),
+      /only active Task Assigner/i,
+    );
+  });
+
   test('a manager cannot deactivate their own account', () => {
     const boss = manager(db);
     team.addTeamMember(db, boss, {
@@ -179,17 +199,15 @@ describe('team service', () => {
     );
   });
 
-  test('and to a reviewer, who sees every task but not the organisation chart', () => {
+  test('but a reviewer sees the roster, having the same access as a Task Assigner', () => {
     const added = team.addTeamMember(db, manager(db), {
       name: 'Reviewer',
       email: 'reviewer@example.com',
       role: Role.Reviewer,
       passcode: 'test-passcode',
     });
-    assert.throws(
-      () => team.listTeam(db, { id: added.id, name: added.name, role: added.role }),
-      /not permitted/i,
-    );
+    const roster = team.listTeam(db, { id: added.id, name: added.name, role: added.role });
+    assert.ok(roster.length > 0);
   });
 
   test('a manager still sees everyone, with how much each is carrying', () => {
