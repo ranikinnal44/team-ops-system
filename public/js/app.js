@@ -12,6 +12,7 @@ import { employeeView } from './views/employee.js';
 import { taskListView } from './views/task-list.js';
 import { taskDetailView } from './views/task-detail.js';
 import { createTaskView } from './views/create-task.js';
+import { ACCESS, canOpen } from './access.js';
 import { milestonesView } from './views/milestones.js';
 import { activityView } from './views/activity.js';
 import { planView } from './views/plan.js';
@@ -21,14 +22,14 @@ const app = document.getElementById('app');
 
 const ROUTES = [
   { pattern: /^\/login$/, view: loginView, chrome: false },
-  { pattern: /^\/manager$/, view: managerView, managerOnly: true },
+  { pattern: /^\/manager$/, view: managerView, access: ACCESS.manager },
   { pattern: /^\/my-work$/, view: employeeView },
-  { pattern: /^\/tasks\/new$/, view: createTaskView, managerOnly: true },
+  { pattern: /^\/tasks\/new$/, view: createTaskView, access: ACCESS.assigner },
   { pattern: /^\/tasks\/([^/]+)$/, view: taskDetailView },
   { pattern: /^\/tasks$/, view: taskListView },
-  { pattern: /^\/plan$/, view: planView, managerOnly: true },
+  { pattern: /^\/plan$/, view: planView, access: ACCESS.manager },
   { pattern: /^\/milestones$/, view: milestonesView },
-  { pattern: /^\/team$/, view: teamView, managerOnly: true },
+  { pattern: /^\/team$/, view: teamView, access: ACCESS.manager },
   { pattern: /^\/activity$/, view: activityView },
 ];
 
@@ -159,7 +160,7 @@ async function render() {
     return;
   }
 
-  if (route.managerOnly && session.user?.role !== 'manager') {
+  if (!canOpen(route, session.user?.role)) {
     location.hash = '#/my-work';
     return;
   }
